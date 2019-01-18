@@ -41,7 +41,7 @@ include/pbc_singular.h \
 include/pbc_test.h \
 include/pbc_utils.h
 
-libpbc_a_CPPFLAGS = -Iinclude -lgmp -lm -version-info $(SO_VERSION) $(PBC_LDFLAGS) $(LIBPBC_LDFLAGS)
+libpbc_a_CPPFLAGS = -Iinclude
 libpbc_a_SOURCES = arith/field.c arith/z.c \
 	arith/naivefp.c arith/fastfp.c \
 	arith/fp.c arith/fasterfp.c arith/montfp.c \
@@ -57,7 +57,7 @@ libpbc_a_SOURCES = arith/field.c arith/z.c \
 	ecc/eta_T_3.c \
 	ecc/param.c ecc/a_param.c ecc/d_param.c ecc/e_param.c \
 	ecc/f_param.c ecc/g_param.c
-#libpbc_la_LDFLAGS = -Iinclude -lgmp -lm -version-info $(SO_VERSION) $(PBC_LDFLAGS) $(LIBPBC_LDFLAGS)
+libpbc_a_LDFLAGS = -Iinclude -lgmp -lm -version-info $(SO_VERSION) $(PBC_LDFLAGS) $(LIBPBC_LDFLAGS)
 
 # LDADD is fallback of program_LDADD
 # explicit "-lgmp" fixes error of "undefined reference to GMP symbol"
