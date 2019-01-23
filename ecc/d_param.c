@@ -20,6 +20,8 @@
 #include "pbc_d_param.h"
 #include "ecc/param.h"
 
+#include <os/lib/heapmem.h>
+
 struct d_param_s {
   mpz_t q;       // curve defined over F_q
   mpz_t n;       // has order n (= q - t + 1) in F_q

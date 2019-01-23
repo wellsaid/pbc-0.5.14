@@ -5,23 +5,25 @@
 #include "pbc_utils.h"
 #include "pbc_memory.h"
 
+#include <os/lib/heapmem.h>
+
 #ifdef SAFE_CLEAN
 /* guarantee zeroing the memory */
 static void gmp_free(void *ptr, size_t size) {
   if(ptr)
     memset(ptr, 0, size);
-  free(ptr);
+  heapmem_free(ptr);
 }
 
 static void* gmp_malloc(size_t size) {
-  return malloc(size);
+  return heapmem_alloc(size);
 }
 
 /* guarantee zeroing the memory
  * realloc() is not suitable for use with secure memory
  * because memory contents are not zeroed out. */
 static void* gmp_realloc(void *old_ptr, size_t old_size, size_t new_size) {
-  void *new_ptr = malloc(new_size);
+  void *new_ptr = heapmem_alloc(new_size);
   if(new_ptr && old_ptr)
     memcpy(new_ptr, old_ptr, old_size);
   gmp_free(old_ptr, old_size);
@@ -54,7 +56,7 @@ static inline void *pbc_ptr_to_mem(size_t *p) {
 }
 
 static void *pbc_mem_malloc(size_t size) {
-  void *ptr = malloc(size + sizeof(size_t));
+  void *ptr = heapmem_alloc(size + sizeof(size_t));
   if(ptr)
     pbc_mem_set_size(ptr, size);
   return ptr;
@@ -62,12 +64,12 @@ static void *pbc_mem_malloc(size_t size) {
 
 static void pbc_mem_free(void *ptr) {
   memset(ptr, 0, pbc_mem_get_size(ptr) + sizeof(size_t));
-  free(ptr);
+  heapmem_free(ptr);
 }
 
 static void *default_pbc_malloc(size_t size) {
   void *ptr = pbc_mem_malloc(size);
-  if(!ptr) pbc_die("malloc() error");
+  if(!ptr) pbc_die("heapmem_alloc() error");
   return pbc_mem_to_ptr(ptr);
 }
 
@@ -88,18 +90,18 @@ static void default_pbc_free(void *ptr) {
 }
 #else
 static void *default_pbc_malloc(size_t size) {
-  void *res = malloc(size);
-  if (!res) pbc_die("malloc() error");
+  void *res = heapmem_alloc(size);
+  if (!res) pbc_die("heapmem_alloc() error");
   return res;
 }
 
 static void *default_pbc_realloc(void *ptr, size_t size) {
-  void *res = realloc(ptr, size);
-  if (!res) pbc_die("realloc() error");
+  void *res = heapmem_realloc(ptr, size);
+  if (!res) pbc_die("heapmem_realloc() error");
   return res;
 }
 
-static void default_pbc_free(void *ptr) { free(ptr); }
+static void default_pbc_free(void *ptr) { heapmem_free(ptr); }
 #endif
 
 /* release memory got from pbc_malloc only by pbc_free(), do not use free() */
