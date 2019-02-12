@@ -4,6 +4,11 @@
 #define __PBC_RANDOM_H__
 
 /*@manual pbcrandom
+Initializes the pbc random moduile
+ */
+void pbc_random_init(void);
+
+/*@manual pbcrandom
 Sets 'filename' as a source of random bytes. For example,
 on Linux one might use `/dev/random`.
 */

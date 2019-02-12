@@ -2,11 +2,13 @@
 #include <stdint.h> // for intptr_t
 #include <stdlib.h>
 #include <gmp.h>
+#include <time.h>
+
+#include <os/lib/random.h>
+
 #include "pbc_random.h"
 #include "pbc_utils.h"
 #include "pbc_memory.h"
-
-void pbc_init_random(void);
 
 // Must use pointer due to lack of gmp_randstate_ptr.
 static gmp_randstate_t *get_rs(void) {
@@ -54,19 +56,16 @@ static void file_mpz_random(mpz_t r, mpz_t limit, void *data) {
   pbc_free(bytes);
 }
 
-static void (*current_mpz_random)(mpz_t, mpz_t, void *);
-static void *current_random_data;
-static int random_function_ready = 0;
-
-void pbc_random_set_function(void (*fun)(mpz_t, mpz_t, void *), void *data) {
-  current_mpz_random = fun;
-  current_random_data = data;
-  random_function_ready = 1;
-}
-
 void pbc_mpz_random(mpz_t z, mpz_t limit) {
-  if (!random_function_ready) pbc_init_random();
-  current_mpz_random(z, limit, current_random_data);
+	UNUSED_VAR(limit);
+
+	/* Impose limit? In ESP32 implementation i did not do it! */
+	uint32_t low = 0;
+	low += random_rand();
+	uint32_t high = 0;
+	high += random_rand();
+	uint32_t n = low + (high<<sizeof(unsigned short));
+	mpz_init_set_ui(z, n);
 }
 
 void pbc_mpz_randomb(mpz_t z, unsigned int bits) {
