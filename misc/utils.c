@@ -18,7 +18,7 @@ static int out(const char *format, ...) {
   va_list params;
 
   va_start(params, format);
-  int res = vfprintf(stderr, format, params);
+  int res = printf(format, params);
   va_end(params);
   return res;
 }
