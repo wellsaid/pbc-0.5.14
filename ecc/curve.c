@@ -156,6 +156,31 @@ static void curve_double(element_ptr c, element_ptr a) {
 }
 
 #ifdef CONTIKI_TARGET_ZOUL
+void print_all_items(element_ptr x, char* name){
+	mpz_t mpz_x_i;
+	element_ptr x_i;
+	char *p_str;
+	unsigned int p_str_size = 0;
+
+	mpz_init(mpz_x_i);
+	unsigned int item_count = element_item_count(x);
+	printf("%s = { "); fflush(stdout);
+	for(unsigned int i = 0; i < item_count; i++) {
+		x_i = element_item(x, i);
+		element_to_mpz(mpz_x_i, x_i);
+		p_str_size = mpz_sizeinbase(mpz_x_i, 10) + 1;
+		p_str = heapmem_alloc(p_str_size);
+		gmp_snprintf(p_str, p_str_size, "%Zd", mpz_x_i);
+		printf(p_str); fflush(stdout);
+		heapmem_free(p_str);
+
+		if(i < item_count - 1){
+			printf(", "); fflush(stdout);
+		}
+	}
+	printf(" }\n");
+}
+
 uint32_t* mpz_to_fixed_size_limbs_array(mpz_t x, size_t n){
 	uint32_t* toret = (uint32_t*) heapmem_alloc(n*sizeof(uint32_t));
 	memset(toret, 0, n*sizeof(uint32_t));
@@ -371,7 +396,13 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
   } else {
 //#if defined(CONTIKI_TARGET_ZOUL)
 	 element_t c_tmp;
+	 unsigned int out_str_size = 0;
+	 char* out_str;
 	 if(a->field->pairing != NULL) {
+		 print_all_items(a, "a");
+
+		 print_all_items(b, "b");
+
 		 element_init_same_as(c_tmp, c);
 		 curve_mul_pka(c_tmp, a, b);
 		 ((point_ptr) c_tmp->data)->inf_flag = 0;
@@ -403,6 +434,10 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
     r->inf_flag = 0;
 
     if(a->field->pairing != NULL) {
+    	print_all_items(c, "c_software");
+
+    	print_all_items(c_tmp, "c_hardware");
+
     	if(element_cmp(c_tmp, c)){
     		printf("ERROR: Driver gives different result!\n");
     	}
