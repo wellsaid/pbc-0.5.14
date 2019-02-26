@@ -5,6 +5,14 @@
 #ifndef __PBC_A_PARAM_H__
 #define __PBC_A_PARAM_H__
 
+#include "pbc_field.h"
+
+typedef struct {
+  field_t Fq, Fq2, Eq;
+  int exp2, exp1;
+  int sign1;
+} *a_pairing_data_ptr;
+
 struct symtab_s;
 int pbc_param_init_a(pbc_param_ptr par, struct symtab_s *tab);
 

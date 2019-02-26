@@ -27,12 +27,6 @@ typedef struct {
   mpz_t h; // r * h = q + 1
 } *a_param_ptr;
 
-typedef struct {
-  field_t Fq, Fq2, Eq;
-  int exp2, exp1;
-  int sign1;
-} *a_pairing_data_ptr;
-
 static void a_out_str(FILE *stream, void *data) {
   a_param_ptr p = data;
   param_out_type(stream, "a");

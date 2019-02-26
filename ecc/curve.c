@@ -12,7 +12,12 @@
 #include "pbc_curve.h"
 #include "pbc_memory.h"
 #include "pbc_random.h"
+#include "pbc_param.h"
+#include "pbc_a_param.h"
+#include "pbc_pairing.h"
 #include "misc/darray.h"
+#include <ecc-driver.h>
+#include <os/lib/heapmem.h>
 
 // Per-field data.
 typedef struct {
@@ -150,6 +155,194 @@ static void curve_double(element_ptr c, element_ptr a) {
   double_no_check(r, p, cdp->a);
 }
 
+#ifdef CONTIKI_TARGET_ZOUL
+uint32_t* mpz_to_fixed_size_limbs_array(mpz_t x, size_t n){
+	uint32_t* toret = (uint32_t*) heapmem_alloc(n*sizeof(uint32_t));
+	memset(toret, 0, n*sizeof(uint32_t));
+	for(int i = 0; i < x->_mp_size; i++){
+		toret[i] = x->_mp_d[i];
+	}
+
+	return toret;
+}
+
+void limbs_array_to_mpz(mpz_t m, uint32_t* ls, size_t n){
+	mpz_realloc2(m, n*sizeof(mp_limb_t)*8);
+	for(size_t i = 0; i < n; i++){
+		m->_mp_d[i] = ls[i];
+	}
+	m->_mp_size = n;
+}
+
+static ecc_curve_info_t init_ecc_operation(element_ptr a){
+	uint32_t *a_coeff, *b_coeff, *prime, *order, *gen_x, *gen_y;
+	mpz_t mpz_a_coeff, mpz_b_coeff, mpz_gen_x, mpz_gen_y;
+
+	/* getting all curve parameters from a */
+	curve_data_ptr cdp = a->field->data;
+	field_ptr fp = cdp->field;
+	pairing_ptr pp = a->field->pairing;
+	a_pairing_data_ptr apdp = pp->data;
+
+	mpz_ptr mpz_prime = apdp->Fq->order;
+	//char prime_str[mpz_sizeinbase(mpz_prime, 10) + 1];
+	//gmp_sprintf(prime_str, "%Zd", mpz_prime);
+	//printf("prime: %s\n", prime_str);
+
+	mpz_ptr mpz_order = a->field->order;
+	//char order_str[mpz_sizeinbase(mpz_order, 10) + 1];
+	//gmp_sprintf(order_str, "%Zd", mpz_order);
+	//printf("order: %s\n", order_str);
+
+	mpz_init(mpz_a_coeff);
+	mpz_init(mpz_b_coeff);
+	element_to_mpz(mpz_a_coeff, cdp->a);
+	element_to_mpz(mpz_b_coeff, cdp->b);
+
+	mpz_init(mpz_gen_x);
+	mpz_init(mpz_gen_y);
+	element_ptr gen = (cdp->cofac == NULL)? cdp->gen_no_cofac : cdp->gen;
+	element_ptr gen_x_ptr = element_x(gen);
+	element_ptr gen_y_ptr = element_y(gen);
+	element_to_mpz(mpz_gen_x, gen_x_ptr);
+	element_to_mpz(mpz_gen_y, gen_y_ptr);
+
+	/* get largest parameter size */
+	unsigned int curve_size =
+			MAX( mpz_size(mpz_a_coeff),
+			MAX( mpz_size(mpz_b_coeff),
+			MAX( mpz_size(mpz_gen_x),
+			MAX( mpz_size(mpz_gen_y),
+			MAX( mpz_size(mpz_prime),
+					 mpz_size(mpz_order)
+					))))); /* in 32-bit words */
+
+	if(curve_size > PKA_MAX_CURVE_SIZE){
+		printf("ERROR: Curve too large\n");
+		exit(1);
+	}
+
+	/* all parameters to max. size (adding 0 in front if necessary) */
+	prime = mpz_to_fixed_size_limbs_array(mpz_prime, curve_size);
+	mpz_clear(mpz_prime);
+	order = mpz_to_fixed_size_limbs_array(mpz_order, curve_size);
+	mpz_clear(mpz_order);
+	gen_x = mpz_to_fixed_size_limbs_array(mpz_gen_x, curve_size);
+	mpz_clear(mpz_gen_x);
+	gen_y = mpz_to_fixed_size_limbs_array(mpz_gen_y, curve_size);
+	mpz_clear(mpz_gen_y);
+	a_coeff = mpz_to_fixed_size_limbs_array(mpz_a_coeff, curve_size);
+	mpz_clear(mpz_a_coeff);
+	b_coeff = mpz_to_fixed_size_limbs_array(mpz_b_coeff, curve_size);
+	mpz_clear(mpz_b_coeff);
+
+	ecc_curve_info_t curve = {
+			.name = fp->name,
+			.size =  curve_size,
+			.prime = prime,
+			.n = order,
+			.a = a_coeff,
+			.b = b_coeff,
+			.x = gen_x,
+			.y = gen_y
+	};
+
+	/* initialize pka engine */
+	pka_init();
+
+	return curve;
+}
+
+void finish_ecc_operation(ecc_curve_info_t curve){
+	/* free memory */
+	heapmem_free(curve.prime);
+	heapmem_free(curve.n);
+	heapmem_free(curve.a);
+	heapmem_free(curve.b);
+	heapmem_free(curve.x);
+	heapmem_free(curve.y);
+
+	/* stop pka engine */
+	pka_disable();
+}
+
+static void curve_mul_pka(element_ptr c, element_ptr a, element_ptr b){
+	/* initialize operation */
+	ecc_curve_info_t curve = init_ecc_operation(a);
+
+	element_ptr ptr_a_x, ptr_a_y, ptr_c_x, ptr_c_y;
+	mpz_t mpz_a_x, mpz_a_y, mpz_e, mpz_c_x, mpz_c_y;
+	uint32_t *a_x = NULL, *a_y = NULL, *e = NULL;
+
+	uint32_t result_vec;
+	ec_point_t point_a, point_c /* will contain resulting point */;
+
+	ptr_a_x = element_x(a);
+	ptr_a_y = element_y(a);
+
+	mpz_init(mpz_a_x);
+	element_to_mpz(mpz_a_x, ptr_a_x);
+	if(mpz_size(mpz_a_x) > curve.size){
+		printf("ERROR: Element a too large\n");
+		exit(1);
+	}
+	a_x = mpz_to_fixed_size_limbs_array(mpz_a_x, 12);
+	mpz_clear(mpz_a_x);
+
+	mpz_init(mpz_a_y);
+	element_to_mpz(mpz_a_y, ptr_a_y);
+	if(mpz_size(mpz_a_y) > curve.size){
+		printf("ERROR: Element a too large\n");
+		exit(1);
+	}
+	a_y = mpz_to_fixed_size_limbs_array(mpz_a_y, 12);
+	mpz_clear(mpz_a_y);
+
+	memcpy(&point_a.x, a_x, 12);
+	if(a_x != NULL) heapmem_free(a_x);
+	memcpy(&point_a.y, a_y, 12);
+	if(a_y != NULL) heapmem_free(a_y);
+
+	mpz_init(mpz_e);
+	element_to_mpz(mpz_e, b);
+	if(mpz_size(mpz_e) > curve.size){
+		printf("ERROR: Scalar b too large\n");
+		exit(1);
+	}
+	e = mpz_to_fixed_size_limbs_array(mpz_e, curve.size);
+	mpz_clear(mpz_e);
+
+	/* how to be notified when it has finished? -> You have to pass it a contiki process instead of NULL
+	 * (TODO: How can i block the caller of THIS function)
+	 */
+	if( ecc_mul_start(e, &point_a, &curve, &result_vec, NULL) != PKA_STATUS_SUCCESS){
+		printf("ERROR: starting ecc_mul operation\n");
+		exit(1);
+	}
+	if(e != NULL) heapmem_free(e);
+
+	/* TODO: make wait less ugly */
+	while( ecc_mul_get_result(&point_c, result_vec) == PKA_STATUS_OPERATION_INPRG ); /* WARNING: very ugly way to wait! */
+
+	/* put point_x in x */
+	ptr_c_x = element_x(c);
+	ptr_c_y = element_y(c);
+
+	mpz_init(mpz_c_x);
+	limbs_array_to_mpz(mpz_c_x, point_c.x, 12);
+	element_set_mpz(ptr_c_x, mpz_c_x);
+	mpz_clear(mpz_c_x);
+
+	mpz_init(mpz_c_y);
+	limbs_array_to_mpz(mpz_c_y, point_c.y, 12);
+	element_set_mpz(ptr_c_y, mpz_c_y);
+	mpz_clear(mpz_c_y);
+
+	/* finish operation */
+	finish_ecc_operation(curve);
+}
+#endif
+
 static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
   curve_data_ptr cdp = a->field->data;
   point_ptr r = c->data, p = a->data, q = b->data;
@@ -168,7 +361,7 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
         r->inf_flag = 1;
         return;
       } else {
-        double_no_check(r, p, cdp->a);
+        double_no_check(r, p, cdp->a); // TODO: How to accelerate?
         return;
       }
     }
@@ -176,6 +369,14 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
     r->inf_flag = 1;
     return;
   } else {
+//#if defined(CONTIKI_TARGET_ZOUL)
+	 element_t c_tmp;
+	 if(a->field->pairing != NULL) {
+		 element_init_same_as(c_tmp, c);
+		 curve_mul_pka(c_tmp, a, b);
+		 ((point_ptr) c_tmp->data)->inf_flag = 0;
+	 }
+//#else
     element_t lambda, e0, e1;
 
     element_init(lambda, cdp->field);
@@ -198,11 +399,22 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
 
     element_set(r->x, e0);
     element_set(r->y, e1);
+//#endif
     r->inf_flag = 0;
 
+    if(a->field->pairing != NULL) {
+    	if(element_cmp(c_tmp, c)){
+    		printf("ERROR: Driver gives different result!\n");
+    	}
+
+    	element_clear(c_tmp);
+    }
+
+//#if !defined(CONTIKI_TARGET_ZOUL)
     element_clear(lambda);
     element_clear(e0);
     element_clear(e1);
+//#endif
   }
 }
 
