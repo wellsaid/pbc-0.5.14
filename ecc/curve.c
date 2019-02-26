@@ -156,7 +156,7 @@ static void curve_double(element_ptr c, element_ptr a) {
 }
 
 #ifdef CONTIKI_TARGET_ZOUL
-void print_all_items(element_ptr x, char* name){
+static void print_all_items(element_ptr x, const char* name){
 	mpz_t mpz_x_i;
 	element_ptr x_i;
 	char *p_str;
@@ -164,7 +164,7 @@ void print_all_items(element_ptr x, char* name){
 
 	mpz_init(mpz_x_i);
 	unsigned int item_count = element_item_count(x);
-	printf("%s = { "); fflush(stdout);
+	printf("%s = { ", name); fflush(stdout);
 	for(unsigned int i = 0; i < item_count; i++) {
 		x_i = element_item(x, i);
 		element_to_mpz(mpz_x_i, x_i);
@@ -181,7 +181,7 @@ void print_all_items(element_ptr x, char* name){
 	printf(" }\n");
 }
 
-uint32_t* mpz_to_fixed_size_limbs_array(mpz_t x, size_t n){
+static uint32_t* mpz_to_fixed_size_limbs_array(mpz_t x, size_t n){
 	uint32_t* toret = (uint32_t*) heapmem_alloc(n*sizeof(uint32_t));
 	memset(toret, 0, n*sizeof(uint32_t));
 	for(int i = 0; i < x->_mp_size; i++){
@@ -191,7 +191,7 @@ uint32_t* mpz_to_fixed_size_limbs_array(mpz_t x, size_t n){
 	return toret;
 }
 
-void limbs_array_to_mpz(mpz_t m, uint32_t* ls, size_t n){
+static void limbs_array_to_mpz(mpz_t m, uint32_t* ls, size_t n){
 	mpz_realloc2(m, n*sizeof(mp_limb_t)*8);
 	for(size_t i = 0; i < n; i++){
 		m->_mp_d[i] = ls[i];
@@ -278,7 +278,7 @@ static ecc_curve_info_t init_ecc_operation(element_ptr a){
 	return curve;
 }
 
-void finish_ecc_operation(ecc_curve_info_t curve){
+static void finish_ecc_operation(ecc_curve_info_t curve){
 	/* free memory */
 	heapmem_free(curve.prime);
 	heapmem_free(curve.n);
@@ -291,36 +291,30 @@ void finish_ecc_operation(ecc_curve_info_t curve){
 	pka_disable();
 }
 
-static void curve_mul_pka(element_ptr c, element_ptr a, element_ptr b){
-	/* initialize operation */
-	ecc_curve_info_t curve = init_ecc_operation(a);
+static ec_point_t element_to_ec_point(element_ptr a, unsigned int curve_size){
+	ec_point_t point_a;
 
-	element_ptr ptr_a_x, ptr_a_y, ptr_c_x, ptr_c_y;
-	mpz_t mpz_a_x, mpz_a_y, mpz_e, mpz_c_x, mpz_c_y;
-	uint32_t *a_x = NULL, *a_y = NULL, *e = NULL;
+	element_ptr ptr_a_x = element_x(a);
+	element_ptr ptr_a_y = element_y(a);
 
-	uint32_t result_vec;
-	ec_point_t point_a, point_c /* will contain resulting point */;
-
-	ptr_a_x = element_x(a);
-	ptr_a_y = element_y(a);
-
+	mpz_t mpz_a_x;
 	mpz_init(mpz_a_x);
 	element_to_mpz(mpz_a_x, ptr_a_x);
-	if(mpz_size(mpz_a_x) > curve.size){
+	if(mpz_size(mpz_a_x) > curve_size){
 		printf("ERROR: Element a too large\n");
 		exit(1);
 	}
-	a_x = mpz_to_fixed_size_limbs_array(mpz_a_x, 12);
+	uint32_t *a_x = mpz_to_fixed_size_limbs_array(mpz_a_x, 12);
 	mpz_clear(mpz_a_x);
 
+	mpz_t mpz_a_y;
 	mpz_init(mpz_a_y);
 	element_to_mpz(mpz_a_y, ptr_a_y);
-	if(mpz_size(mpz_a_y) > curve.size){
+	if(mpz_size(mpz_a_y) > curve_size){
 		printf("ERROR: Element a too large\n");
 		exit(1);
 	}
-	a_y = mpz_to_fixed_size_limbs_array(mpz_a_y, 12);
+	uint32_t *a_y = mpz_to_fixed_size_limbs_array(mpz_a_y, 12);
 	mpz_clear(mpz_a_y);
 
 	memcpy(&point_a.x, a_x, 12);
@@ -328,40 +322,50 @@ static void curve_mul_pka(element_ptr c, element_ptr a, element_ptr b){
 	memcpy(&point_a.y, a_y, 12);
 	if(a_y != NULL) heapmem_free(a_y);
 
-	mpz_init(mpz_e);
-	element_to_mpz(mpz_e, b);
-	if(mpz_size(mpz_e) > curve.size){
-		printf("ERROR: Scalar b too large\n");
-		exit(1);
-	}
-	e = mpz_to_fixed_size_limbs_array(mpz_e, curve.size);
-	mpz_clear(mpz_e);
+	return point_a;
+}
 
-	/* how to be notified when it has finished? -> You have to pass it a contiki process instead of NULL
-	 * (TODO: How can i block the caller of THIS function)
-	 */
-	if( ecc_mul_start(e, &point_a, &curve, &result_vec, NULL) != PKA_STATUS_SUCCESS){
-		printf("ERROR: starting ecc_mul operation\n");
-		exit(1);
-	}
-	if(e != NULL) heapmem_free(e);
+static void ec_point_to_element(element_ptr c, ec_point_t point_c){
+	element_ptr ptr_c_x = element_x(c);
+	element_ptr ptr_c_y = element_y(c);
 
-	/* TODO: make wait less ugly */
-	while( ecc_mul_get_result(&point_c, result_vec) == PKA_STATUS_OPERATION_INPRG ); /* WARNING: very ugly way to wait! */
-
-	/* put point_x in x */
-	ptr_c_x = element_x(c);
-	ptr_c_y = element_y(c);
-
+	mpz_t mpz_c_x;
 	mpz_init(mpz_c_x);
 	limbs_array_to_mpz(mpz_c_x, point_c.x, 12);
 	element_set_mpz(ptr_c_x, mpz_c_x);
 	mpz_clear(mpz_c_x);
 
+	mpz_t mpz_c_y;
 	mpz_init(mpz_c_y);
 	limbs_array_to_mpz(mpz_c_y, point_c.y, 12);
 	element_set_mpz(ptr_c_y, mpz_c_y);
 	mpz_clear(mpz_c_y);
+}
+
+static void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
+	/* initialize operation */
+	ecc_curve_info_t curve = init_ecc_operation(a);
+
+	uint32_t result_vec;
+
+	ec_point_t point_a = element_to_ec_point(a, curve.size);
+	ec_point_t point_b = element_to_ec_point(b, curve.size);
+	ec_point_t point_c;
+
+	/* how to be notified when it has finished? -> You have to pass it a contiki process instead of NULL
+	 * (TODO: How can i block the caller of THIS function)
+	 */
+	if( ecc_add_start(&point_a, &point_b, &curve, &result_vec, NULL) != PKA_STATUS_SUCCESS){
+		printf("ERROR: starting ecc_add operation\n");
+		exit(1);
+	}
+
+	/* TODO: make wait less ugly */
+	while( ecc_add_get_result(&point_c, result_vec) == PKA_STATUS_OPERATION_INPRG ); /* WARNING: very ugly way to wait! */
+
+	/* put point_c in c */
+	ec_point_to_element(c, point_c);
+	((point_ptr) c->data)->inf_flag = 0;
 
 	/* finish operation */
 	finish_ecc_operation(curve);
@@ -396,16 +400,13 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
   } else {
 //#if defined(CONTIKI_TARGET_ZOUL)
 	 element_t c_tmp;
-	 unsigned int out_str_size = 0;
-	 char* out_str;
 	 if(a->field->pairing != NULL) {
 		 print_all_items(a, "a");
 
 		 print_all_items(b, "b");
 
 		 element_init_same_as(c_tmp, c);
-		 curve_mul_pka(c_tmp, a, b);
-		 ((point_ptr) c_tmp->data)->inf_flag = 0;
+		 curve_add_pka(c_tmp, a, b);
 	 }
 //#else
     element_t lambda, e0, e1;
