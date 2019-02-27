@@ -156,7 +156,7 @@ static void curve_double(element_ptr c, element_ptr a) {
 }
 
 #ifdef CONTIKI_TARGET_ZOUL
-static void print_all_items(element_ptr x, const char* name){
+void print_all_items(element_ptr x, const char* name){
 	mpz_t mpz_x_i;
 	element_ptr x_i;
 	char *p_str;
@@ -181,25 +181,90 @@ static void print_all_items(element_ptr x, const char* name){
 	printf(" }\n");
 }
 
-static uint32_t* mpz_to_fixed_size_limbs_array(mpz_t x, size_t n){
+uint32_t* mpz_to_fixed_size_limbs_array(mpz_t x, size_t n){
 	uint32_t* toret = (uint32_t*) heapmem_alloc(n*sizeof(uint32_t));
 	memset(toret, 0, n*sizeof(uint32_t));
-	for(int i = 0; i < x->_mp_size; i++){
-		toret[i] = x->_mp_d[i];
-	}
+	size_t countp;
+	mpz_export(toret, &countp, -1, sizeof(uint32_t), -1, 0, x);
+//	for(int i = 0; i < x->_mp_size; i++){
+//		toret[i] = x->_mp_d[i];
+//	}
 
 	return toret;
 }
 
-static void limbs_array_to_mpz(mpz_t m, uint32_t* ls, size_t n){
+void limbs_array_to_mpz(mpz_t m, const uint32_t* ls, const size_t n){
 	mpz_realloc2(m, n*sizeof(mp_limb_t)*8);
-	for(size_t i = 0; i < n; i++){
-		m->_mp_d[i] = ls[i];
-	}
-	m->_mp_size = n;
+	mpz_import(m, n, -1, sizeof(mp_limb_t), -1, 0, ls);
+//	for(size_t i = 0; i < n; i++){
+//		m->_mp_d[i] = ls[i];
+//	}
+//	m->_mp_size = n;
 }
 
-static ecc_curve_info_t init_ecc_operation(element_ptr a){
+void print_ecc_curve_info(ecc_curve_info_t curve, const char* name){
+	printf("%s = {\n", name);
+	//printf("\t.name=%s\n", (curve.name != NULL)?curve.name:"NULL");
+	printf("\t.size=%d\n", curve.size);
+
+	mpz_t prime;
+	mpz_init(prime);
+	limbs_array_to_mpz(prime, curve.prime, curve.size);
+
+	mpz_t n;
+	mpz_init(n);
+	limbs_array_to_mpz(n, curve.n, curve.size);
+
+	mpz_t a;
+	mpz_init(a);
+	limbs_array_to_mpz(a, curve.a, curve.size);
+
+	mpz_t b;
+	mpz_init(b);
+	limbs_array_to_mpz(b, curve.b, curve.size);
+
+	mpz_t x;
+	mpz_init(x);
+	limbs_array_to_mpz(x, curve.x, curve.size);
+
+	mpz_t y;
+	mpz_init(y);
+	limbs_array_to_mpz(y, curve.y, curve.size);
+
+	/* get largest parameter size in base 10 */
+	unsigned int max_size =
+			MAX( mpz_sizeinbase(prime, 10),
+			MAX( mpz_sizeinbase(n, 10),
+			MAX( mpz_sizeinbase(a, 10),
+			MAX( mpz_sizeinbase(b, 10),
+			MAX( mpz_sizeinbase(x, 10),
+					mpz_sizeinbase(y, 10)
+					)))));
+	unsigned int mpz_str_len = max_size + 1;
+	char mpz_str[mpz_str_len];
+
+	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", prime);
+	printf("\t.prime=%s\n", mpz_str);
+
+	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", n);
+	printf("\t.n=%s\n", mpz_str);
+
+	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", a);
+	printf("\t.a=%s\n", mpz_str);
+
+	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", b);
+	printf("\t.b=%s\n", mpz_str);
+
+	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", x);
+	printf("\t.x=%s\n", mpz_str);
+
+	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", y);
+	printf("\t.y=%s\n", mpz_str);
+
+	printf("}\n");
+}
+
+ecc_curve_info_t init_ecc_operation(element_ptr a){
 	uint32_t *a_coeff, *b_coeff, *prime, *order, *gen_x, *gen_y;
 	mpz_t mpz_a_coeff, mpz_b_coeff, mpz_gen_x, mpz_gen_y;
 
@@ -210,14 +275,8 @@ static ecc_curve_info_t init_ecc_operation(element_ptr a){
 	a_pairing_data_ptr apdp = pp->data;
 
 	mpz_ptr mpz_prime = apdp->Fq->order;
-	//char prime_str[mpz_sizeinbase(mpz_prime, 10) + 1];
-	//gmp_sprintf(prime_str, "%Zd", mpz_prime);
-	//printf("prime: %s\n", prime_str);
 
 	mpz_ptr mpz_order = a->field->order;
-	//char order_str[mpz_sizeinbase(mpz_order, 10) + 1];
-	//gmp_sprintf(order_str, "%Zd", mpz_order);
-	//printf("order: %s\n", order_str);
 
 	mpz_init(mpz_a_coeff);
 	mpz_init(mpz_b_coeff);
@@ -278,7 +337,7 @@ static ecc_curve_info_t init_ecc_operation(element_ptr a){
 	return curve;
 }
 
-static void finish_ecc_operation(ecc_curve_info_t curve){
+void finish_ecc_operation(ecc_curve_info_t curve){
 	/* free memory */
 	heapmem_free(curve.prime);
 	heapmem_free(curve.n);
@@ -291,7 +350,7 @@ static void finish_ecc_operation(ecc_curve_info_t curve){
 	pka_disable();
 }
 
-static ec_point_t element_to_ec_point(element_ptr a, unsigned int curve_size){
+ec_point_t element_to_ec_point(element_ptr a, unsigned int curve_size){
 	ec_point_t point_a;
 
 	element_ptr ptr_a_x = element_x(a);
@@ -325,7 +384,7 @@ static ec_point_t element_to_ec_point(element_ptr a, unsigned int curve_size){
 	return point_a;
 }
 
-static void ec_point_to_element(element_ptr c, ec_point_t point_c){
+void ec_point_to_element(element_ptr c, ec_point_t point_c){
 	element_ptr ptr_c_x = element_x(c);
 	element_ptr ptr_c_y = element_y(c);
 
@@ -342,9 +401,11 @@ static void ec_point_to_element(element_ptr c, ec_point_t point_c){
 	mpz_clear(mpz_c_y);
 }
 
-static void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
+void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
 	/* initialize operation */
 	ecc_curve_info_t curve = init_ecc_operation(a);
+
+	print_ecc_curve_info(curve, "curve");
 
 	uint32_t result_vec;
 
