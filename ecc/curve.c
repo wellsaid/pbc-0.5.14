@@ -202,104 +202,127 @@ void limbs_array_to_mpz(mpz_t m, const uint32_t* ls, const size_t n){
 //	m->_mp_size = n;
 }
 
-void print_ecc_curve_info(ecc_curve_info_t curve, const char* name){
-	printf("%s = {\n", name);
-	//printf("\t.name=%s\n", (curve.name != NULL)?curve.name:"NULL");
+
+/**
+ * \brief frees structure for ecc operation specified
+ *
+ * \param curve		Pointer to the curve structure allocated
+ * \param label		The label for the printed structure
+ */
+void print_ecc_curve_info(ecc_curve_info_t curve, const char* label){
+	printf("%s = {\n", label);
 	printf("\t.size=%d\n", curve.size);
 
 	mpz_t prime;
 	mpz_init(prime);
 	limbs_array_to_mpz(prime, curve.prime, curve.size);
 
-	mpz_t n;
-	mpz_init(n);
-	limbs_array_to_mpz(n, curve.n, curve.size);
+//	mpz_t n;
+//	mpz_init(n);
+//	limbs_array_to_mpz(n, curve.n, curve.size);
 
 	mpz_t a;
 	mpz_init(a);
 	limbs_array_to_mpz(a, curve.a, curve.size);
 
 	mpz_t b;
-	mpz_init(b);
-	limbs_array_to_mpz(b, curve.b, curve.size);
+	if(curve.b != NULL){
+		mpz_init(b);
+		limbs_array_to_mpz(b, curve.b, curve.size);
+	}
 
-	mpz_t x;
-	mpz_init(x);
-	limbs_array_to_mpz(x, curve.x, curve.size);
-
-	mpz_t y;
-	mpz_init(y);
-	limbs_array_to_mpz(y, curve.y, curve.size);
+//	mpz_t x;
+//	mpz_init(x);
+//	limbs_array_to_mpz(x, curve.x, curve.size);
+//
+//	mpz_t y;
+//	mpz_init(y);
+//	limbs_array_to_mpz(y, curve.y, curve.size);
 
 	/* get largest parameter size in base 10 */
 	unsigned int max_size =
-			MAX( mpz_sizeinbase(prime, 10),
-			MAX( mpz_sizeinbase(n, 10),
 			MAX( mpz_sizeinbase(a, 10),
-			MAX( mpz_sizeinbase(b, 10),
-			MAX( mpz_sizeinbase(x, 10),
-					mpz_sizeinbase(y, 10)
-					)))));
+			MAX( (curve.b != NULL)?mpz_sizeinbase(b, 10):0,
+					mpz_sizeinbase(prime, 10)
+					 ));
 	unsigned int mpz_str_len = max_size + 1;
 	char mpz_str[mpz_str_len];
 
 	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", prime);
 	printf("\t.prime=%s\n", mpz_str);
 
-	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", n);
-	printf("\t.n=%s\n", mpz_str);
+//	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", n);
+//	printf("\t.n=%s\n", mpz_str);
 
 	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", a);
 	printf("\t.a=%s\n", mpz_str);
 
-	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", b);
-	printf("\t.b=%s\n", mpz_str);
+	if(curve.b != NULL){
+		gmp_snprintf(mpz_str, mpz_str_len, "%Zd", b);
+		printf("\t.b=%s\n", mpz_str);
+	}
 
-	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", x);
-	printf("\t.x=%s\n", mpz_str);
-
-	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", y);
-	printf("\t.y=%s\n", mpz_str);
+//	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", x);
+//	printf("\t.x=%s\n", mpz_str);
+//
+//	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", y);
+//	printf("\t.y=%s\n", mpz_str);
 
 	printf("}\n");
 }
 
-ecc_curve_info_t init_ecc_operation(element_ptr a){
-	uint32_t *a_coeff, *b_coeff, *prime, *order, *gen_x, *gen_y;
-	mpz_t mpz_a_coeff, mpz_b_coeff, mpz_gen_x, mpz_gen_y;
+/**
+ * \brief initialize structure for ecc operation specified
+ *
+ * \param f	Pointer to the PBC field on which the operation will be performed
+ * \parma op	The operation to prepare for (0 for sum, 1 for mul)
+ * \return 		The allocated curve
+ */
+ecc_curve_info_t init_ecc_operation(field_ptr f, const char op){
+	uint32_t *a_coeff = NULL, *b_coeff = NULL, *prime = NULL /*, *order, *gen_x, *gen_y*/;
+	mpz_t mpz_a_coeff, mpz_b_coeff/*, mpz_gen_x, mpz_gen_y*/;
 
-	/* getting all curve parameters from a */
-	curve_data_ptr cdp = a->field->data;
-	field_ptr fp = cdp->field;
-	pairing_ptr pp = a->field->pairing;
+	/* getting all curve parameters from f */
+	curve_data_ptr cdp = f->data;
+//	field_ptr fp = cdp->field;
+	pairing_ptr pp = f->pairing;
 	a_pairing_data_ptr apdp = pp->data;
 
 	mpz_ptr mpz_prime = apdp->Fq->order;
 
-	mpz_ptr mpz_order = a->field->order;
+//	mpz_ptr mpz_order = f->order;
 
 	mpz_init(mpz_a_coeff);
-	mpz_init(mpz_b_coeff);
 	element_to_mpz(mpz_a_coeff, cdp->a);
-	element_to_mpz(mpz_b_coeff, cdp->b);
 
-	mpz_init(mpz_gen_x);
-	mpz_init(mpz_gen_y);
-	element_ptr gen = (cdp->cofac == NULL)? cdp->gen_no_cofac : cdp->gen;
-	element_ptr gen_x_ptr = element_x(gen);
-	element_ptr gen_y_ptr = element_y(gen);
-	element_to_mpz(mpz_gen_x, gen_x_ptr);
-	element_to_mpz(mpz_gen_y, gen_y_ptr);
+	if(op == 1){
+		mpz_init(mpz_b_coeff);
+		element_to_mpz(mpz_b_coeff, cdp->b);
+	}
+
+//	mpz_init(mpz_gen_x);
+//	mpz_init(mpz_gen_y);
+//	element_ptr gen = (cdp->cofac == NULL)? cdp->gen_no_cofac : cdp->gen;
+//	element_ptr gen_x_ptr = element_x(gen);
+//	element_ptr gen_y_ptr = element_y(gen);
+//	element_to_mpz(mpz_gen_x, gen_x_ptr);
+//	element_to_mpz(mpz_gen_y, gen_y_ptr);
 
 	/* get largest parameter size */
+//	unsigned int curve_size =
+//			MAX( mpz_size(mpz_a_coeff),
+//			MAX( mpz_size(mpz_b_coeff),
+//			MAX( mpz_size(mpz_gen_x),
+//			MAX( mpz_size(mpz_gen_y),
+//			MAX( mpz_size(mpz_prime),
+//					 mpz_size(mpz_order)
+//					))))); /* in 32-bit words */
+
 	unsigned int curve_size =
 			MAX( mpz_size(mpz_a_coeff),
-			MAX( mpz_size(mpz_b_coeff),
-			MAX( mpz_size(mpz_gen_x),
-			MAX( mpz_size(mpz_gen_y),
-			MAX( mpz_size(mpz_prime),
-					 mpz_size(mpz_order)
-					))))); /* in 32-bit words */
+			MAX( (op==1)?mpz_size(mpz_b_coeff):0,
+					 mpz_size(mpz_prime)
+					 ));
 
 	if(curve_size > PKA_MAX_CURVE_SIZE){
 		printf("ERROR: Curve too large\n");
@@ -309,26 +332,28 @@ ecc_curve_info_t init_ecc_operation(element_ptr a){
 	/* all parameters to max. size (adding 0 in front if necessary) */
 	prime = mpz_to_fixed_size_limbs_array(mpz_prime, curve_size);
 	mpz_clear(mpz_prime);
-	order = mpz_to_fixed_size_limbs_array(mpz_order, curve_size);
-	mpz_clear(mpz_order);
-	gen_x = mpz_to_fixed_size_limbs_array(mpz_gen_x, curve_size);
-	mpz_clear(mpz_gen_x);
-	gen_y = mpz_to_fixed_size_limbs_array(mpz_gen_y, curve_size);
-	mpz_clear(mpz_gen_y);
+//	order = mpz_to_fixed_size_limbs_array(mpz_order, curve_size);
+//	mpz_clear(mpz_order);
+//	gen_x = mpz_to_fixed_size_limbs_array(mpz_gen_x, curve_size);
+//	mpz_clear(mpz_gen_x);
+//	gen_y = mpz_to_fixed_size_limbs_array(mpz_gen_y, curve_size);
+//	mpz_clear(mpz_gen_y);
 	a_coeff = mpz_to_fixed_size_limbs_array(mpz_a_coeff, curve_size);
 	mpz_clear(mpz_a_coeff);
-	b_coeff = mpz_to_fixed_size_limbs_array(mpz_b_coeff, curve_size);
-	mpz_clear(mpz_b_coeff);
+	if(op == 1){
+		b_coeff = mpz_to_fixed_size_limbs_array(mpz_b_coeff, curve_size);
+		mpz_clear(mpz_b_coeff);
+	}
 
 	ecc_curve_info_t curve = {
-			.name = fp->name,
+			.name = NULL,
 			.size =  curve_size,
 			.prime = prime,
-			.n = order,
+			.n = NULL,
 			.a = a_coeff,
 			.b = b_coeff,
-			.x = gen_x,
-			.y = gen_y
+			.x = NULL,
+			.y = NULL
 	};
 
 	/* initialize pka engine */
@@ -337,14 +362,19 @@ ecc_curve_info_t init_ecc_operation(element_ptr a){
 	return curve;
 }
 
+/**
+ * \brief frees structure for ecc operation specified
+ *
+ * \param curve		Pointer to the curve structure allocated
+ */
 void finish_ecc_operation(ecc_curve_info_t curve){
 	/* free memory */
 	heapmem_free(curve.prime);
-	heapmem_free(curve.n);
+//	heapmem_free(curve.n);
 	heapmem_free(curve.a);
-	heapmem_free(curve.b);
-	heapmem_free(curve.x);
-	heapmem_free(curve.y);
+	if(curve.b != NULL) heapmem_free(curve.b);
+//	heapmem_free(curve.x);
+//	heapmem_free(curve.y);
 
 	/* stop pka engine */
 	pka_disable();
@@ -403,7 +433,7 @@ void ec_point_to_element(element_ptr c, ec_point_t point_c){
 
 void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
 	/* initialize operation */
-	ecc_curve_info_t curve = init_ecc_operation(a);
+	ecc_curve_info_t curve = init_ecc_operation(a->field, 0);
 
 	print_ecc_curve_info(curve, "curve");
 
