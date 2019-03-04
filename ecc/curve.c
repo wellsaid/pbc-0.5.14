@@ -16,7 +16,6 @@
 #include "pbc_a_param.h"
 #include "pbc_pairing.h"
 #include "misc/darray.h"
-#include <ecc-driver.h>
 #include <os/lib/heapmem.h>
 
 // Per-field data.
@@ -156,6 +155,8 @@ static void curve_double(element_ptr c, element_ptr a) {
 }
 
 #ifdef CONTIKI_TARGET_ZOUL
+#include <ecc-driver.h>
+
 void print_all_items(element_ptr x, const char* name){
 	mpz_t mpz_x_i;
 	element_ptr x_i;
@@ -284,11 +285,13 @@ ecc_curve_info_t init_ecc_operation(field_ptr f, const char op){
 
 	/* getting all curve parameters from f */
 	curve_data_ptr cdp = f->data;
-//	field_ptr fp = cdp->field;
+	//field_ptr fp = cdp->field;
+	fptr fp = cdp->field->data;
 	pairing_ptr pp = f->pairing;
 	a_pairing_data_ptr apdp = pp->data;
 
-	mpz_ptr mpz_prime = apdp->Fq->order;
+	//mpz_ptr mpz_prime = apdp->Fq->order;
+	prime = fp->primelimbs;
 
 //	mpz_ptr mpz_order = f->order;
 
@@ -318,11 +321,12 @@ ecc_curve_info_t init_ecc_operation(field_ptr f, const char op){
 //					 mpz_size(mpz_order)
 //					))))); /* in 32-bit words */
 
-	unsigned int curve_size =
-			MAX( mpz_size(mpz_a_coeff),
+	unsigned int curve_size = fp->limbs;
+/*			MAX( mpz_size(mpz_a_coeff),
 			MAX( (op==1)?mpz_size(mpz_b_coeff):0,
 					 mpz_size(mpz_prime)
 					 ));
+*/
 
 	if(curve_size > PKA_MAX_CURVE_SIZE){
 		printf("ERROR: Curve too large\n");
@@ -330,8 +334,8 @@ ecc_curve_info_t init_ecc_operation(field_ptr f, const char op){
 	}
 
 	/* all parameters to max. size (adding 0 in front if necessary) */
-	prime = mpz_to_fixed_size_limbs_array(mpz_prime, curve_size);
-	mpz_clear(mpz_prime);
+//	prime = mpz_to_fixed_size_limbs_array(mpz_prime, curve_size);
+//	mpz_clear(mpz_prime);
 //	order = mpz_to_fixed_size_limbs_array(mpz_order, curve_size);
 //	mpz_clear(mpz_order);
 //	gen_x = mpz_to_fixed_size_limbs_array(mpz_gen_x, curve_size);
@@ -356,8 +360,8 @@ ecc_curve_info_t init_ecc_operation(field_ptr f, const char op){
 			.y = NULL
 	};
 
-	/* initialize pka engine */
-	pka_init();
+	/* start pka engine */
+	pka_enable();
 
 	return curve;
 }
@@ -452,7 +456,13 @@ void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
 	}
 
 	/* TODO: make wait less ugly */
-	while( ecc_add_get_result(&point_c, result_vec) == PKA_STATUS_OPERATION_INPRG ); /* WARNING: very ugly way to wait! */
+	uint8_t ret;
+	while( (ret = ecc_add_get_result(&point_c, result_vec)) == PKA_STATUS_OPERATION_INPRG ); /* WARNING: very ugly way to wait! */
+
+	if(ret == PKA_STATUS_FAILURE){
+		printf("ERROR: getting result of ecc_mul operation (err. %ld)\n", REG(PKA_SHIFT));
+		exit(1);
+	}
 
 	/* put point_c in c */
 	ec_point_to_element(c, point_c);

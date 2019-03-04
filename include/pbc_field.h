@@ -11,6 +11,16 @@
 #ifndef __PBC_FIELD_H__
 #define __PBC_FIELD_H__
 
+// Per-field data.
+typedef struct {
+  size_t limbs;           // Number of limbs per element.
+  size_t bytes;           // Number of bytes per element.
+  mp_limb_t *primelimbs;  // Points to an array of limbs holding the modulus.
+  mp_limb_t negpinv;      // -p^-1 mod b
+  mp_limb_t *R;           // R mod p
+  mp_limb_t *R3;          // R^3 mod p
+} *fptr;
+
 struct field_s;
 
 struct element_s {
