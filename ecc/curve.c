@@ -158,164 +158,128 @@ static void curve_double(element_ptr c, element_ptr a) {
 #ifdef CONTIKI_TARGET_ZOUL
 #include <ecc-driver.h>
 
-void print_all_items(element_ptr x, const char* name){
-	mpz_t mpz_x_i;
-	element_ptr x_i;
-	char *p_str;
-	unsigned int p_str_size = 0;
+//static void print_all_items(element_ptr x, const char* name){
+//	mpz_t mpz_x_i;
+//	element_ptr x_i;
+//	char *p_str;
+//	unsigned int p_str_size = 0;
+//
+//	mpz_init(mpz_x_i);
+//	unsigned int item_count = element_item_count(x);
+//	printf("%s = { ", name); fflush(stdout);
+//	for(unsigned int i = 0; i < item_count; i++) {
+//		x_i = element_item(x, i);
+//		element_to_mpz(mpz_x_i, x_i);
+//		p_str_size = mpz_sizeinbase(mpz_x_i, 10) + 1;
+//		p_str = heapmem_alloc(p_str_size);
+//		gmp_snprintf(p_str, p_str_size, "%Zd", mpz_x_i);
+//		printf(p_str); fflush(stdout);
+//		heapmem_free(p_str);
+//
+//		if(i < item_count - 1){
+//			printf(", "); fflush(stdout);
+//		}
+//	}
+//	printf(" }\n");
+//}
 
-	mpz_init(mpz_x_i);
-	unsigned int item_count = element_item_count(x);
-	printf("%s = { ", name); fflush(stdout);
-	for(unsigned int i = 0; i < item_count; i++) {
-		x_i = element_item(x, i);
-		element_to_mpz(mpz_x_i, x_i);
-		p_str_size = mpz_sizeinbase(mpz_x_i, 10) + 1;
-		p_str = heapmem_alloc(p_str_size);
-		gmp_snprintf(p_str, p_str_size, "%Zd", mpz_x_i);
-		printf(p_str); fflush(stdout);
-		heapmem_free(p_str);
-
-		if(i < item_count - 1){
-			printf(", "); fflush(stdout);
-		}
-	}
-	printf(" }\n");
-}
-
-uint32_t* mpz_to_fixed_size_limbs_array(mpz_t x, size_t n){
-	uint32_t* toret = (uint32_t*) heapmem_alloc(n*sizeof(uint32_t));
-	memset(toret, 0, n*sizeof(uint32_t));
+static void mpz_to_fixed_size_limbs_array(const uint32_t* ls, mpz_t x, size_t n){
+	memset(ls, 0, n*sizeof(uint32_t));
 	size_t countp;
-	mpz_export(toret, &countp, -1, sizeof(uint32_t), -1, 0, x);
-
-	return toret;
+	mpz_export(ls, &countp, -1, sizeof(uint32_t), -1, 0, x);
 }
 
-void limbs_array_to_mpz(mpz_t m, const uint32_t* ls, const size_t n){
+static void limbs_array_to_mpz(mpz_t m, const uint32_t* ls, const size_t n){
 	mpz_import(m, n, -1, sizeof(mp_limb_t), -1, 0, ls);
 }
 
 
-/**
- * \brief frees structure for ecc operation specified
- *
- * \param curve		Pointer to the curve structure allocated
- * \param label		The label for the printed structure
- */
-void print_ecc_curve_info(ecc_curve_info_t curve, const char* label){
-	printf("%s = {\n", label);
-	printf("\t.size=%d\n", curve.size);
-
-	mpz_t prime;
-	mpz_init(prime);
-	limbs_array_to_mpz(prime, curve.prime, curve.size);
-
-	mpz_t a;
-	mpz_init(a);
-	limbs_array_to_mpz(a, curve.a, curve.size);
-
-	mpz_t b;
-	if(curve.b != NULL){
-		mpz_init(b);
-		limbs_array_to_mpz(b, curve.b, curve.size);
-	}
-
-	/* get largest parameter size in base 10 */
-	unsigned int max_size =
-			MAX( mpz_sizeinbase(a, 10),
-			MAX( (curve.b != NULL)?mpz_sizeinbase(b, 10):0,
-					mpz_sizeinbase(prime, 10)
-					 ));
-	unsigned int mpz_str_len = max_size + 1;
-	char mpz_str[mpz_str_len];
-
-	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", prime);
-	printf("\t.prime=%s\n", mpz_str);
-
-	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", a);
-	printf("\t.a=%s\n", mpz_str);
-
-	if(curve.b != NULL){
-		gmp_snprintf(mpz_str, mpz_str_len, "%Zd", b);
-		printf("\t.b=%s\n", mpz_str);
-	}
-
-	printf("}\n");
-}
+//static void print_ecc_curve_info(ecc_curve_info_t curve, const char* label){
+//	printf("%s = {\n", label);
+//	printf("\t.size=%d\n", curve.size);
+//
+//	mpz_t prime;
+//	mpz_init(prime);
+//	limbs_array_to_mpz(prime, curve.prime, curve.size);
+//
+//	mpz_t a;
+//	mpz_init(a);
+//	limbs_array_to_mpz(a, curve.a, curve.size);
+//
+//	mpz_t b;
+//	if(curve.b != NULL){
+//		mpz_init(b);
+//		limbs_array_to_mpz(b, curve.b, curve.size);
+//	}
+//
+//	/* get largest parameter size in base 10 */
+//	unsigned int max_size =
+//			MAX( mpz_sizeinbase(a, 10),
+//			MAX( (curve.b != NULL)?mpz_sizeinbase(b, 10):0,
+//					mpz_sizeinbase(prime, 10)
+//					 ));
+//	unsigned int mpz_str_len = max_size + 1;
+//	char mpz_str[mpz_str_len];
+//
+//	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", prime);
+//	printf("\t.prime=%s\n", mpz_str);
+//
+//	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", a);
+//	printf("\t.a=%s\n", mpz_str);
+//
+//	if(curve.b != NULL){
+//		gmp_snprintf(mpz_str, mpz_str_len, "%Zd", b);
+//		printf("\t.b=%s\n", mpz_str);
+//	}
+//
+//	printf("}\n");
+//}
 
 /**
  * \brief initialize structure for ecc operation specified
  *
  * \param f	Pointer to the PBC field on which the operation will be performed
  * \parma op	The operation to prepare for (0 for sum, 1 for mul)
- * \return 		The allocated curve
  */
-ecc_curve_info_t init_ecc_operation(field_ptr f, const char op){
-	uint32_t *a_coeff = NULL, *b_coeff = NULL, *prime = NULL /*, *order, *gen_x, *gen_y*/;
-	mpz_t mpz_a_coeff, mpz_b_coeff/*, mpz_gen_x, mpz_gen_y*/;
-
-	/* getting all curve parameters from f */
-	curve_data_ptr cdp = f->data;
-	fptr fp = cdp->field->data;
-	prime = fp->primelimbs;
-
-	mpz_init(mpz_a_coeff);
-	element_to_mpz(mpz_a_coeff, cdp->a);
-
-	if(op == 1){
-		mpz_init(mpz_b_coeff);
-		element_to_mpz(mpz_b_coeff, cdp->b);
-	}
-
-	unsigned int curve_size = fp->limbs;
-
-	if(curve_size > PKA_MAX_CURVE_SIZE){
+static void init_ecc_operation(volatile ecc_curve_info_t curve, field_ptr f, const char op){
+	if(curve.size > PKA_MAX_CURVE_SIZE){
 		printf("ERROR: Curve too large\n");
 		exit(1);
 	}
 
-	/* all parameters to max. size (adding 0 in front if necessary) */
-	a_coeff = mpz_to_fixed_size_limbs_array(mpz_a_coeff, curve_size);
+	mpz_t mpz_a_coeff, mpz_b_coeff;
+
+	/* getting all curve parameters from f */
+	curve_data_ptr cdp = f->data;
+	fptr fp = cdp->field->data;
+	memcpy(curve.prime, fp->primelimbs, curve.size*sizeof(uint32_t));
+
+	mpz_init(mpz_a_coeff);
+	element_to_mpz(mpz_a_coeff, cdp->a);
+	mpz_to_fixed_size_limbs_array(curve.a, mpz_a_coeff, curve.size);
 	mpz_clear(mpz_a_coeff);
+
 	if(op == 1){
-		b_coeff = mpz_to_fixed_size_limbs_array(mpz_b_coeff, curve_size);
+		mpz_init(mpz_b_coeff);
+		element_to_mpz(mpz_b_coeff, cdp->b);
+		mpz_to_fixed_size_limbs_array(curve.b, mpz_b_coeff, curve.size);
 		mpz_clear(mpz_b_coeff);
 	}
 
-	ecc_curve_info_t curve = {
-			.name = NULL,
-			.size =  curve_size,
-			.prime = prime,
-			.n = NULL,
-			.a = a_coeff,
-			.b = b_coeff,
-			.x = NULL,
-			.y = NULL
-	};
-
 	/* start pka engine */
 	pka_enable();
-
-	return curve;
 }
 
 /**
  * \brief frees structure for ecc operation specified
  *
- * \param curve		Pointer to the curve structure allocated
  */
-void finish_ecc_operation(ecc_curve_info_t curve){
-	/* free memory */
-	heapmem_free(curve.prime);
-	heapmem_free(curve.a);
-	if(curve.b != NULL) heapmem_free(curve.b);
-
+static void finish_ecc_operation(){
 	/* stop pka engine */
 	pka_disable();
 }
 
-ec_point_t element_to_ec_point(element_ptr a, unsigned int curve_size){
+static ec_point_t element_to_ec_point(element_ptr a, unsigned int curve_size){
 	ec_point_t point_a;
 	memset(&point_a, 0, sizeof(ec_point_t));
 
@@ -329,7 +293,7 @@ ec_point_t element_to_ec_point(element_ptr a, unsigned int curve_size){
 		printf("ERROR: Element a too large\n");
 		exit(1);
 	}
-	uint32_t *a_x = mpz_to_fixed_size_limbs_array(mpz_a_x, 12);
+	mpz_to_fixed_size_limbs_array(&point_a.x[0], mpz_a_x, 12);
 	mpz_clear(mpz_a_x);
 
 	mpz_t mpz_a_y;
@@ -339,18 +303,13 @@ ec_point_t element_to_ec_point(element_ptr a, unsigned int curve_size){
 		printf("ERROR: Element a too large\n");
 		exit(1);
 	}
-	uint32_t *a_y = mpz_to_fixed_size_limbs_array(mpz_a_y, 12);
+	mpz_to_fixed_size_limbs_array(&point_a.y[0], mpz_a_y, 12);
 	mpz_clear(mpz_a_y);
-
-	memcpy(&point_a.x, a_x, 12*sizeof(uint32_t));
-	if(a_x != NULL) heapmem_free(a_x);
-	memcpy(&point_a.y, a_y, 12*sizeof(uint32_t));
-	if(a_y != NULL) heapmem_free(a_y);
 
 	return point_a;
 }
 
-void ec_point_to_element(element_ptr c, ec_point_t point_c){
+static void ec_point_to_element(element_ptr c, ec_point_t point_c){
 	element_ptr ptr_c_x = element_x(c);
 	element_ptr ptr_c_y = element_y(c);
 
@@ -367,11 +326,28 @@ void ec_point_to_element(element_ptr c, ec_point_t point_c){
 	mpz_clear(mpz_c_y);
 }
 
-void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
-	/* initialize operation */
-	ecc_curve_info_t curve = init_ecc_operation(a->field, 0);
+#define STATIC_CURVE(curve, f)			\
+		curve_data_ptr cdp = f->data;		\
+		fptr fp = cdp->field->data;				\
+		uint32_t a_coeff_buf[fp->limbs];		\
+		uint32_t b_coeff_buf[fp->limbs];		\
+		uint32_t prime[fp->limbs];				\
+		ecc_curve_info_t curve = {				\
+					.name = NULL,					\
+					.size =  fp->limbs,				\
+					.prime = prime,					\
+					.n = NULL,						\
+					.a = &a_coeff_buf[0],			\
+					.b = &b_coeff_buf[0],			\
+					.x = NULL,						\
+					.y = NULL						\
+			};												\
 
-	print_ecc_curve_info(curve, "curve");
+
+static void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
+	/* initialize operation */
+	STATIC_CURVE(curve, a->field);
+	init_ecc_operation(curve, a->field, 0);
 
 	uint32_t result_vec;
 
@@ -403,14 +379,13 @@ void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
 	((point_ptr) c->data)->inf_flag = 0;
 
 	/* finish operation */
-	//finish_ecc_operation(curve);
+	finish_ecc_operation(curve);
 }
 
-void curve_mul_pka(element_ptr c, element_ptr a, mpz_t k){
+static void curve_mul_pka(element_ptr c, element_ptr a, mpz_t k){
 	/* initialize operation */
-	ecc_curve_info_t curve = init_ecc_operation(a->field, 1);
-
-	print_ecc_curve_info(curve, "curve");
+	STATIC_CURVE(curve, a->field);
+	init_ecc_operation(curve, a->field, 1);
 
 	uint32_t result_vec;
 
@@ -418,7 +393,8 @@ void curve_mul_pka(element_ptr c, element_ptr a, mpz_t k){
 	memset(&point_c, 0, sizeof(ec_point_t));
 
 	point_a = element_to_ec_point(a, curve.size);
-	uint32_t* k_ls = mpz_to_fixed_size_limbs_array(k, curve.size);
+	uint32_t k_ls[curve.size];
+	mpz_to_fixed_size_limbs_array(&k_ls[0], k, curve.size);
 
 	/* how to be notified when it has finished? -> You have to pass it a contiki process instead of NULL
 	 * (TODO: How can i block the caller of THIS function)
@@ -442,7 +418,7 @@ void curve_mul_pka(element_ptr c, element_ptr a, mpz_t k){
 	((point_ptr) c->data)->inf_flag = 0;
 
 	/* finish operation */
-	//finish_ecc_operation(curve);
+	finish_ecc_operation(curve);
 }
 #endif
 
@@ -465,34 +441,25 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
         return;
       } else {
 #if defined(CONTIKI_TARGET_ZOUL)
-    	element_t c_tmp, c_tmp1;
-	 	print_all_items(a, "a");
-
-	 	print_all_items(b, "b");
+    	element_t c_tmp;
 
 	 	element_init_same_as(c_tmp, c);
 	 	mpz_t k;
 	 	mpz_init(k);
 	 	mpz_set_ui(k, 2);
 	    curve_mul_pka(c_tmp, a, k);
-
-	    element_init_same_as(c_tmp1, c);
-	    /* TODO: Chiamando due volte di seguito si rompono i dati della curva (coefficiente a) */
-	    curve_add_pka(c_tmp1, a, b);
-#endif
+#endif //#else
         double_no_check(r, p, cdp->a);
+//#endif
 
-        print_all_items(c, "c_software");
-
-        print_all_items(c_tmp, "c_hardware (mul)");
-        print_all_items(c_tmp1, "c_hardware (add)");
-
+/* TODO: Remove after testing */
+#if defined(CONTIKI_TARGET_ZOUL)
         if(element_cmp(c_tmp, c)){
         	printf("ERROR: Driver gives different result!\n");
         }
 
         element_clear(c_tmp);
-        element_clear(c_tmp1);
+#endif
         return;
       }
     }
@@ -502,14 +469,10 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
   } else {
 #if defined(CONTIKI_TARGET_ZOUL)
 	 element_t c_tmp;
-	 print_all_items(a, "a");
-
-	 print_all_items(b, "b");
 
 	 element_init_same_as(c_tmp, c);
 	 curve_add_pka(c_tmp, a, b);
-#endif
-//#else
+#endif //#else
     element_t lambda, e0, e1;
 
     element_init(lambda, cdp->field);
@@ -535,17 +498,15 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
 //#endif
     r->inf_flag = 0;
 
-    print_all_items(c, "c_software");
-
-    print_all_items(c_tmp, "c_hardware");
-
+/* TODO: Remove after testing */
+#if defined(CONTIKI_TARGET_ZOUL)
     if(element_cmp(c_tmp, c)){
     	printf("ERROR: Driver gives different result!\n");
     }
 
     element_clear(c_tmp);
+#endif
 
-//#if !defined(CONTIKI_TARGET_ZOUL)
     element_clear(lambda);
     element_clear(e0);
     element_clear(e1);
