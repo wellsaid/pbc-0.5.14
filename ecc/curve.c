@@ -441,24 +441,12 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
         return;
       } else {
 #if defined(CONTIKI_TARGET_ZOUL)
-    	element_t c_tmp;
-
-	 	element_init_same_as(c_tmp, c);
 	 	mpz_t k;
 	 	mpz_init(k);
 	 	mpz_set_ui(k, 2);
-	    curve_mul_pka(c_tmp, a, k);
-#endif //#else
+	    curve_mul_pka(c, a, k);
+#else
         double_no_check(r, p, cdp->a);
-//#endif
-
-/* TODO: Remove after testing */
-#if defined(CONTIKI_TARGET_ZOUL)
-        if(element_cmp(c_tmp, c)){
-        	printf("ERROR: Driver gives different result!\n");
-        }
-
-        element_clear(c_tmp);
 #endif
         return;
       }
@@ -468,11 +456,8 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
     return;
   } else {
 #if defined(CONTIKI_TARGET_ZOUL)
-	 element_t c_tmp;
-
-	 element_init_same_as(c_tmp, c);
-	 curve_add_pka(c_tmp, a, b);
-#endif //#else
+	 curve_add_pka(c, a, b);
+#else
     element_t lambda, e0, e1;
 
     element_init(lambda, cdp->field);
@@ -495,22 +480,12 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
 
     element_set(r->x, e0);
     element_set(r->y, e1);
-//#endif
     r->inf_flag = 0;
-
-/* TODO: Remove after testing */
-#if defined(CONTIKI_TARGET_ZOUL)
-    if(element_cmp(c_tmp, c)){
-    	printf("ERROR: Driver gives different result!\n");
-    }
-
-    element_clear(c_tmp);
-#endif
 
     element_clear(lambda);
     element_clear(e0);
     element_clear(e1);
-//#endif
+#endif
   }
 }
 
