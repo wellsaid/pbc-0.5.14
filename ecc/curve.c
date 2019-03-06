@@ -7,53 +7,28 @@
 #include <gmp.h>
 #include "pbc_utils.h"
 #include "pbc_field.h"
-#include "pbc_fp.h"
 #include "pbc_multiz.h"
 #include "pbc_poly.h"
 #include "pbc_curve.h"
 #include "pbc_memory.h"
 #include "pbc_random.h"
 #include "pbc_param.h"
+#include "pbc_pka.h"
 #include "pbc_a_param.h"
 #include "pbc_pairing.h"
 #include "misc/darray.h"
 #include <os/lib/heapmem.h>
 
-// Per-field data.
-typedef struct {
-  field_ptr field; // The field where the curve is defined.
-  element_t a, b;  // The curve is E: Y^2 = X^3 + a X + b.
-  // cofac == NULL means we're using the whole group of points.
-  // otherwise we're working in the subgroup of order #E / cofac,
-  // where #E is the number of points in E.
-  mpz_ptr cofac;
-  // A generator of E.
-  element_t gen_no_cofac;
-  // A generator of the subgroup.
-  element_t gen;
-  // A non-NULL quotient_cmp means we are working with the quotient group of
-  // order #E / quotient_cmp, and the points are actually coset
-  // representatives. Thus for a comparison, we must multiply by quotient_cmp
-  // before comparing.
-  mpz_ptr quotient_cmp;
-} *curve_data_ptr;
-
-// Per-element data. Elements of this group are points on the elliptic curve.
-typedef struct {
-  int inf_flag;    // inf_flag == 1 means O, the point at infinity.
-  element_t x, y;  // Otherwise we have the finite point (x, y).
-} *point_ptr;
-
 static void curve_init(element_ptr e) {
   curve_data_ptr cdp = e->field->data;
-  point_ptr p = e->data = pbc_malloc(sizeof(*p));
+  curve_point_ptr p = e->data = pbc_malloc(sizeof(*p));
   element_init(p->x, cdp->field);
   element_init(p->y, cdp->field);
   p->inf_flag = 1;
 }
 
 static void curve_clear(element_ptr e) {
-  point_ptr p = e->data;
+  curve_point_ptr p = e->data;
   element_clear(p->x);
   element_clear(p->y);
   pbc_free(e->data);
@@ -63,7 +38,7 @@ static int curve_is_valid_point(element_ptr e) {
   element_t t0, t1;
   int result;
   curve_data_ptr cdp = e->field->data;
-  point_ptr p = e->data;
+  curve_point_ptr p = e->data;
 
   if (p->inf_flag) return 1;
 
@@ -82,7 +57,7 @@ static int curve_is_valid_point(element_ptr e) {
 }
 
 static void curve_invert(element_ptr c, element_ptr a) {
-  point_ptr r = c->data, p = a->data;
+  curve_point_ptr r = c->data, p = a->data;
 
   if (p->inf_flag) {
     r->inf_flag = 1;
@@ -94,7 +69,7 @@ static void curve_invert(element_ptr c, element_ptr a) {
 }
 
 static void curve_set(element_ptr c, element_ptr a) {
-  point_ptr r = c->data, p = a->data;
+  curve_point_ptr r = c->data, p = a->data;
   if (p->inf_flag) {
     r->inf_flag = 1;
     return;
@@ -104,7 +79,7 @@ static void curve_set(element_ptr c, element_ptr a) {
   element_set(r->y, p->y);
 }
 
-static inline void double_no_check(point_ptr r, point_ptr p, element_ptr a) {
+static inline void double_no_check(curve_point_ptr r, curve_point_ptr p, element_ptr a) {
   element_t lambda, e0, e1;
   field_ptr f = r->x->field;
 
@@ -143,7 +118,7 @@ static inline void double_no_check(point_ptr r, point_ptr p, element_ptr a) {
 
 static void curve_double(element_ptr c, element_ptr a) {
   curve_data_ptr cdp = a->field->data;
-  point_ptr r = c->data, p = a->data;
+  curve_point_ptr r = c->data, p = a->data;
   if (p->inf_flag) {
     r->inf_flag = 1;
     return;
@@ -155,276 +130,9 @@ static void curve_double(element_ptr c, element_ptr a) {
   double_no_check(r, p, cdp->a);
 }
 
-#ifdef CONTIKI_TARGET_ZOUL
-#include <ecc-driver.h>
-
-//static void print_all_items(element_ptr x, const char* name){
-//	mpz_t mpz_x_i;
-//	element_ptr x_i;
-//	char *p_str;
-//	unsigned int p_str_size = 0;
-//
-//	mpz_init(mpz_x_i);
-//	unsigned int item_count = element_item_count(x);
-//	printf("%s = { ", name); fflush(stdout);
-//	for(unsigned int i = 0; i < item_count; i++) {
-//		x_i = element_item(x, i);
-//		element_to_mpz(mpz_x_i, x_i);
-//		p_str_size = mpz_sizeinbase(mpz_x_i, 10) + 1;
-//		p_str = heapmem_alloc(p_str_size);
-//		gmp_snprintf(p_str, p_str_size, "%Zd", mpz_x_i);
-//		printf(p_str); fflush(stdout);
-//		heapmem_free(p_str);
-//
-//		if(i < item_count - 1){
-//			printf(", "); fflush(stdout);
-//		}
-//	}
-//	printf(" }\n");
-//}
-
-static void mpz_to_fixed_size_limbs_array(const uint32_t* ls, mpz_t x, size_t n){
-	memset(ls, 0, n*sizeof(uint32_t));
-	size_t countp;
-	mpz_export(ls, &countp, -1, sizeof(uint32_t), -1, 0, x);
-}
-
-static void limbs_array_to_mpz(mpz_t m, const uint32_t* ls, const size_t n){
-	mpz_import(m, n, -1, sizeof(mp_limb_t), -1, 0, ls);
-}
-
-
-//static void print_ecc_curve_info(ecc_curve_info_t curve, const char* label){
-//	printf("%s = {\n", label);
-//	printf("\t.size=%d\n", curve.size);
-//
-//	mpz_t prime;
-//	mpz_init(prime);
-//	limbs_array_to_mpz(prime, curve.prime, curve.size);
-//
-//	mpz_t a;
-//	mpz_init(a);
-//	limbs_array_to_mpz(a, curve.a, curve.size);
-//
-//	mpz_t b;
-//	if(curve.b != NULL){
-//		mpz_init(b);
-//		limbs_array_to_mpz(b, curve.b, curve.size);
-//	}
-//
-//	/* get largest parameter size in base 10 */
-//	unsigned int max_size =
-//			MAX( mpz_sizeinbase(a, 10),
-//			MAX( (curve.b != NULL)?mpz_sizeinbase(b, 10):0,
-//					mpz_sizeinbase(prime, 10)
-//					 ));
-//	unsigned int mpz_str_len = max_size + 1;
-//	char mpz_str[mpz_str_len];
-//
-//	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", prime);
-//	printf("\t.prime=%s\n", mpz_str);
-//
-//	gmp_snprintf(mpz_str, mpz_str_len, "%Zd", a);
-//	printf("\t.a=%s\n", mpz_str);
-//
-//	if(curve.b != NULL){
-//		gmp_snprintf(mpz_str, mpz_str_len, "%Zd", b);
-//		printf("\t.b=%s\n", mpz_str);
-//	}
-//
-//	printf("}\n");
-//}
-
-/**
- * \brief initialize structure for ecc operation specified
- *
- * \param f	Pointer to the PBC field on which the operation will be performed
- * \parma op	The operation to prepare for (0 for sum, 1 for mul)
- */
-static void init_ecc_operation(volatile ecc_curve_info_t curve, field_ptr f, const char op){
-	if(curve.size > PKA_MAX_CURVE_SIZE){
-		printf("ERROR: Curve too large\n");
-		exit(1);
-	}
-
-	mpz_t mpz_a_coeff, mpz_b_coeff;
-
-	/* getting all curve parameters from f */
-	curve_data_ptr cdp = f->data;
-	fptr fp = cdp->field->data;
-	memcpy(curve.prime, fp->primelimbs, curve.size*sizeof(uint32_t));
-
-	mpz_init(mpz_a_coeff);
-	element_to_mpz(mpz_a_coeff, cdp->a);
-	mpz_to_fixed_size_limbs_array(curve.a, mpz_a_coeff, curve.size);
-	mpz_clear(mpz_a_coeff);
-
-	if(op == 1){
-		mpz_init(mpz_b_coeff);
-		element_to_mpz(mpz_b_coeff, cdp->b);
-		mpz_to_fixed_size_limbs_array(curve.b, mpz_b_coeff, curve.size);
-		mpz_clear(mpz_b_coeff);
-	}
-
-	/* start pka engine */
-	pka_enable();
-}
-
-/**
- * \brief frees structure for ecc operation specified
- *
- */
-static void finish_ecc_operation(){
-	/* stop pka engine */
-	pka_disable();
-}
-
-static ec_point_t element_to_ec_point(element_ptr a, unsigned int curve_size){
-	ec_point_t point_a;
-	memset(&point_a, 0, sizeof(ec_point_t));
-
-	element_ptr ptr_a_x = element_x(a);
-	element_ptr ptr_a_y = element_y(a);
-
-	mpz_t mpz_a_x;
-	mpz_init(mpz_a_x);
-	element_to_mpz(mpz_a_x, ptr_a_x);
-	if(mpz_size(mpz_a_x) > curve_size){
-		printf("ERROR: Element a too large\n");
-		exit(1);
-	}
-	mpz_to_fixed_size_limbs_array(&point_a.x[0], mpz_a_x, 12);
-	mpz_clear(mpz_a_x);
-
-	mpz_t mpz_a_y;
-	mpz_init(mpz_a_y);
-	element_to_mpz(mpz_a_y, ptr_a_y);
-	if(mpz_size(mpz_a_y) > curve_size){
-		printf("ERROR: Element a too large\n");
-		exit(1);
-	}
-	mpz_to_fixed_size_limbs_array(&point_a.y[0], mpz_a_y, 12);
-	mpz_clear(mpz_a_y);
-
-	return point_a;
-}
-
-static void ec_point_to_element(element_ptr c, ec_point_t point_c){
-	element_ptr ptr_c_x = element_x(c);
-	element_ptr ptr_c_y = element_y(c);
-
-	mpz_t mpz_c_x;
-	mpz_init(mpz_c_x);
-	limbs_array_to_mpz(mpz_c_x, point_c.x, 12);
-	element_set_mpz(ptr_c_x, mpz_c_x);
-	mpz_clear(mpz_c_x);
-
-	mpz_t mpz_c_y;
-	mpz_init(mpz_c_y);
-	limbs_array_to_mpz(mpz_c_y, point_c.y, 12);
-	element_set_mpz(ptr_c_y, mpz_c_y);
-	mpz_clear(mpz_c_y);
-}
-
-#define STATIC_CURVE(curve, f)			\
-		curve_data_ptr cdp = f->data;		\
-		fptr fp = cdp->field->data;				\
-		uint32_t a_coeff_buf[fp->limbs];		\
-		uint32_t b_coeff_buf[fp->limbs];		\
-		uint32_t prime[fp->limbs];				\
-		ecc_curve_info_t curve = {				\
-					.name = NULL,					\
-					.size =  fp->limbs,				\
-					.prime = prime,					\
-					.n = NULL,						\
-					.a = &a_coeff_buf[0],			\
-					.b = &b_coeff_buf[0],			\
-					.x = NULL,						\
-					.y = NULL						\
-			};												\
-
-
-static void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
-	/* initialize operation */
-	STATIC_CURVE(curve, a->field);
-	init_ecc_operation(curve, a->field, 0);
-
-	uint32_t result_vec;
-
-	ec_point_t point_a, point_b, point_c;
-	memset(&point_c, 0, sizeof(ec_point_t));
-
-	point_a = element_to_ec_point(a, curve.size);
-	point_b = element_to_ec_point(b, curve.size);
-
-	/* how to be notified when it has finished? -> You have to pass it a contiki process instead of NULL
-	 * (TODO: How can i block the caller of THIS function)
-	 */
-	if( ecc_add_start(&point_a, &point_b, &curve, &result_vec, NULL) != PKA_STATUS_SUCCESS){
-		printf("ERROR: starting ecc_add operation\n");
-		exit(1);
-	}
-
-	/* TODO: make wait less ugly */
-	uint8_t ret;
-	while( (ret = ecc_add_get_result(&point_c, result_vec)) == PKA_STATUS_OPERATION_INPRG ); /* WARNING: very ugly way to wait! */
-
-	if(ret == PKA_STATUS_FAILURE){
-		printf("ERROR: getting result of ecc_add operation (err. %ld)\n", REG(PKA_SHIFT));
-		exit(1);
-	}
-
-	/* put point_c in c */
-	ec_point_to_element(c, point_c);
-	((point_ptr) c->data)->inf_flag = 0;
-
-	/* finish operation */
-	finish_ecc_operation(curve);
-}
-
-static void curve_mul_pka(element_ptr c, element_ptr a, mpz_t k){
-	/* initialize operation */
-	STATIC_CURVE(curve, a->field);
-	init_ecc_operation(curve, a->field, 1);
-
-	uint32_t result_vec;
-
-	ec_point_t point_a, point_c;
-	memset(&point_c, 0, sizeof(ec_point_t));
-
-	point_a = element_to_ec_point(a, curve.size);
-	uint32_t k_ls[curve.size];
-	mpz_to_fixed_size_limbs_array(&k_ls[0], k, curve.size);
-
-	/* how to be notified when it has finished? -> You have to pass it a contiki process instead of NULL
-	 * (TODO: How can i block the caller of THIS function)
-	 */
-	if( ecc_mul_start(k_ls, &point_a, &curve, &result_vec, NULL) != PKA_STATUS_SUCCESS){
-		printf("ERROR: starting ecc_mul operation\n");
-		exit(1);
-	}
-
-	/* TODO: make wait less ugly */
-	uint8_t ret;
-	while( (ret = ecc_mul_get_result(&point_c, result_vec)) == PKA_STATUS_OPERATION_INPRG ); /* WARNING: very ugly way to wait! */
-
-	if(ret == PKA_STATUS_FAILURE){
-		printf("ERROR: getting result of ecc_mul operation (err. %ld)\n", REG(PKA_SHIFT));
-		exit(1);
-	}
-
-	/* put point_c in c */
-	ec_point_to_element(c, point_c);
-	((point_ptr) c->data)->inf_flag = 0;
-
-	/* finish operation */
-	finish_ecc_operation(curve);
-}
-#endif
-
 static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
   curve_data_ptr cdp = a->field->data;
-  point_ptr r = c->data, p = a->data, q = b->data;
+  curve_point_ptr r = c->data, p = a->data, q = b->data;
 
   if (p->inf_flag) {
     curve_set(c, b);
@@ -494,7 +202,7 @@ static void multi_double(element_ptr c[], element_ptr a[], int n) {
   int i;
   element_t* table = pbc_malloc(sizeof(element_t)*n);  //a big problem?
   element_t e0, e1, e2;
-  point_ptr q, r;
+  curve_point_ptr q, r;
   curve_data_ptr cdp = a[0]->field->data;
 
   q=a[0]->data;
@@ -567,7 +275,7 @@ static void multi_double(element_ptr c[], element_ptr a[], int n) {
 static void multi_add(element_ptr c[], element_ptr a[], element_ptr b[], int n){
   int i;
   element_t* table = pbc_malloc(sizeof(element_t)*n);  //a big problem?
-  point_ptr p, q, r;
+  curve_point_ptr p, q, r;
   element_t e0, e1, e2;
   curve_data_ptr cdp = a[0]->field->data;
 
@@ -648,7 +356,7 @@ static void multi_add(element_ptr c[], element_ptr a[], element_ptr b[], int n){
 }
 
 
-static inline int point_cmp(point_ptr p, point_ptr q) {
+static inline int point_cmp(curve_point_ptr p, curve_point_ptr q) {
   if (p->inf_flag || q->inf_flag) {
     return !(p->inf_flag && q->inf_flag);
   }
@@ -676,19 +384,19 @@ static int curve_cmp(element_ptr a, element_ptr b) {
 }
 
 static void curve_set1(element_ptr x) {
-  point_ptr p = x->data;
+  curve_point_ptr p = x->data;
   p->inf_flag = 1;
 }
 
 static int curve_is1(element_ptr x) {
-  point_ptr p = x->data;
+  curve_point_ptr p = x->data;
   return p->inf_flag;
 }
 
 static void curve_random_no_cofac_solvefory(element_ptr a) {
   //TODO: with 0.5 probability negate y-coord
   curve_data_ptr cdp = a->field->data;
-  point_ptr p = a->data;
+  curve_point_ptr p = a->data;
   element_t t;
 
   element_init(t, cdp->field);
@@ -730,14 +438,14 @@ void curve_set_gen_no_cofac(element_ptr a) {
 }
 
 static int curve_sign(element_ptr e) {
-  point_ptr p = e->data;
+  curve_point_ptr p = e->data;
   if (p->inf_flag) return 0;
   return element_sign(p->y);
 }
 
 static void curve_from_hash(element_t a, void *data, int len) {
   element_t t, t1;
-  point_ptr p = a->data;
+  curve_point_ptr p = a->data;
   curve_data_ptr cdp = a->field->data;
 
   element_init(t, cdp->field);
@@ -765,7 +473,7 @@ static void curve_from_hash(element_t a, void *data, int len) {
 }
 
 static size_t curve_out_str(FILE *stream, int base, element_ptr a) {
-  point_ptr p = a->data;
+  curve_point_ptr p = a->data;
   size_t result, status;
   if (p->inf_flag) {
     if (EOF == fputc('O', stream)) return 0;
@@ -782,7 +490,7 @@ static size_t curve_out_str(FILE *stream, int base, element_ptr a) {
 }
 
 static int curve_snprint(char *s, size_t n, element_ptr a) {
-  point_ptr p = a->data;
+  curve_point_ptr p = a->data;
   size_t result = 0, left;
   int status;
 
@@ -828,7 +536,7 @@ static void curve_set_multiz(element_ptr a, multiz m) {
       pbc_warn("multiz has too few coefficients");
       return;
     }
-    point_ptr p = a->data;
+    curve_point_ptr p = a->data;
     p->inf_flag = 0;
     element_set_multiz(p->x, multiz_at(m, 0));
     element_set_multiz(p->y, multiz_at(m, 1));
@@ -836,7 +544,7 @@ static void curve_set_multiz(element_ptr a, multiz m) {
 }
 
 static int curve_set_str(element_ptr e, const char *s, int base) {
-  point_ptr p = e->data;
+  curve_point_ptr p = e->data;
   const char *cp = s;
   element_set0(e);
   while (*cp && isspace(*cp)) cp++;
@@ -879,12 +587,12 @@ static void field_clear_curve(field_t f) {
 }
 
 static int curve_length_in_bytes(element_ptr x) {
-  point_ptr p = x->data;
+  curve_point_ptr p = x->data;
   return element_length_in_bytes(p->x) + element_length_in_bytes(p->y);
 }
 
 static int curve_to_bytes(unsigned char *data, element_t e) {
-  point_ptr P = e->data;
+  curve_point_ptr P = e->data;
   int len;
   len = element_to_bytes(data, P->x);
   len += element_to_bytes(data + len, P->y);
@@ -892,7 +600,7 @@ static int curve_to_bytes(unsigned char *data, element_t e) {
 }
 
 static int curve_from_bytes(element_t e, unsigned char *data) {
-  point_ptr P = e->data;
+  curve_point_ptr P = e->data;
   int len;
 
   P->inf_flag = 0;
@@ -947,7 +655,7 @@ static int curve_item_count(element_ptr e) {
 
 static element_ptr curve_item(element_ptr e, int i) {
   if (element_is0(e)) return NULL;
-  point_ptr P = e->data;
+  curve_point_ptr P = e->data;
   switch(i) {
     case 0:
       return P->x;
@@ -959,12 +667,12 @@ static element_ptr curve_item(element_ptr e, int i) {
 }
 
 static element_ptr curve_get_x(element_ptr e) {
-  point_ptr P = e->data;
+  curve_point_ptr P = e->data;
   return P->x;
 }
 
 static element_ptr curve_get_y(element_ptr e) {
-  point_ptr P = e->data;
+  curve_point_ptr P = e->data;
   return P->y;
 }
 
@@ -1043,7 +751,7 @@ void field_init_curve_ab(field_ptr f, element_ptr a, element_ptr b, mpz_t order,
 
 // Requires e to be a point on an elliptic curve.
 int element_to_bytes_compressed(unsigned char *data, element_ptr e) {
-  point_ptr P = e->data;
+  curve_point_ptr P = e->data;
   int len;
   len = element_to_bytes(data, P->x);
   if (element_sign(P->y) > 0) {
@@ -1058,7 +766,7 @@ int element_to_bytes_compressed(unsigned char *data, element_ptr e) {
 // Computes a point on the elliptic curve Y^2 = X^3 + a X + b given its
 // x-coordinate.
 // Requires a solution to exist.
-static void point_from_x(point_ptr p, element_t x, element_t a, element_t b) {
+static void point_from_x(curve_point_ptr p, element_t x, element_t a, element_t b) {
   element_t t;
 
   element_init(t, x->field);
@@ -1081,7 +789,7 @@ void curve_from_x(element_ptr e, element_t x) {
 // Requires e to be a point on an elliptic curve.
 int element_from_bytes_compressed(element_ptr e, unsigned char *data) {
   curve_data_ptr cdp = e->field->data;
-  point_ptr P = e->data;
+  curve_point_ptr P = e->data;
   int len;
   len = element_from_bytes(P->x, data);
   point_from_x(P, P->x, cdp->a, cdp->b);
@@ -1096,13 +804,13 @@ int element_from_bytes_compressed(element_ptr e, unsigned char *data) {
 }
 
 int element_length_in_bytes_compressed(element_ptr e) {
-  point_ptr P = e->data;
+  curve_point_ptr P = e->data;
   return element_length_in_bytes(P->x) + 1;
 }
 
 // Requires e to be a point on an elliptic curve.
 int element_to_bytes_x_only(unsigned char *data, element_ptr e) {
-  point_ptr P = e->data;
+  curve_point_ptr P = e->data;
   int len;
   len = element_to_bytes(data, P->x);
   return len;
@@ -1111,7 +819,7 @@ int element_to_bytes_x_only(unsigned char *data, element_ptr e) {
 // Requires e to be a point on an elliptic curve.
 int element_from_bytes_x_only(element_ptr e, unsigned char *data) {
   curve_data_ptr cdp = e->field->data;
-  point_ptr P = e->data;
+  curve_point_ptr P = e->data;
   int len;
   len = element_from_bytes(P->x, data);
   point_from_x(P, P->x, cdp->a, cdp->b);
@@ -1119,16 +827,16 @@ int element_from_bytes_x_only(element_ptr e, unsigned char *data) {
 }
 
 int element_length_in_bytes_x_only(element_ptr e) {
-  point_ptr P = e->data;
+  curve_point_ptr P = e->data;
   return element_length_in_bytes(P->x);
 }
 
 inline element_ptr curve_x_coord(element_t e) {
-  return ((point_ptr) e->data)->x;
+  return ((curve_point_ptr) e->data)->x;
 }
 
 inline element_ptr curve_y_coord(element_t e) {
-  return ((point_ptr) e->data)->y;
+  return ((curve_point_ptr) e->data)->y;
 }
 
 inline element_ptr curve_a_coeff(element_t e) {
@@ -1263,7 +971,7 @@ void pbc_mpz_curve_order_extn(mpz_t res, mpz_t q, mpz_t t, int k) {
 }
 
 void curve_set_si(element_t R, long int x, long int y) {
-  point_ptr p = R->data;
+  curve_point_ptr p = R->data;
   element_set_si(p->x, x);
   element_set_si(p->y, y);
   p->inf_flag = 0;

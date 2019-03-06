@@ -10,6 +10,9 @@
 #ifndef __PBC_FP_H__
 #define __PBC_FP_H__
 
+#include <gmp.h>
+#include "pbc_field.h"
+
 // Per-element data.
 typedef struct {
   char flag;     // flag == 0 means the element is zero.

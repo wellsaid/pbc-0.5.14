@@ -39,7 +39,8 @@ include/pbc_poly.h \
 include/pbc_random.h \
 include/pbc_singular.h \
 include/pbc_test.h \
-include/pbc_utils.h
+include/pbc_utils.h \
+include/pbc_pka.h
 
 libpbc_a_CPPFLAGS = -Iinclude
 libpbc_a_SOURCES = arith/field.c arith/z.c \
@@ -56,7 +57,9 @@ libpbc_a_SOURCES = arith/field.c arith/z.c \
 	ecc/singular.c \
 	ecc/eta_T_3.c \
 	ecc/param.c ecc/a_param.c ecc/d_param.c ecc/e_param.c \
-	ecc/f_param.c ecc/g_param.c
+	ecc/f_param.c ecc/g_param.c \
+	pka/pbc_pka.c
+	
 libpbc_a_LDFLAGS = -Iinclude -lgmp -lm -version-info $(SO_VERSION) $(PBC_LDFLAGS) $(LIBPBC_LDFLAGS)
 
 # LDADD is fallback of program_LDADD
