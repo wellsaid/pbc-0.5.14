@@ -10,6 +10,12 @@
 #ifndef __PBC_FP_H__
 #define __PBC_FP_H__
 
+// Per-element data.
+typedef struct {
+  char flag;     // flag == 0 means the element is zero.
+  mp_limb_t *d;  // Otherwise d points to an array holding the element.
+} *eptr_fp;
+
 void field_init_naive_fp(field_ptr f, mpz_t prime);
 void field_init_tiny_fp(field_ptr f, mpz_t prime);
 void field_init_fast_fp(field_ptr f, mpz_t prime);

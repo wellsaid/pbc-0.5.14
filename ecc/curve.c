@@ -7,6 +7,7 @@
 #include <gmp.h>
 #include "pbc_utils.h"
 #include "pbc_field.h"
+#include "pbc_fp.h"
 #include "pbc_multiz.h"
 #include "pbc_poly.h"
 #include "pbc_curve.h"
@@ -187,20 +188,12 @@ uint32_t* mpz_to_fixed_size_limbs_array(mpz_t x, size_t n){
 	memset(toret, 0, n*sizeof(uint32_t));
 	size_t countp;
 	mpz_export(toret, &countp, -1, sizeof(uint32_t), -1, 0, x);
-//	for(int i = 0; i < x->_mp_size; i++){
-//		toret[i] = x->_mp_d[i];
-//	}
 
 	return toret;
 }
 
 void limbs_array_to_mpz(mpz_t m, const uint32_t* ls, const size_t n){
-//	mpz_realloc2(m, n*sizeof(mp_limb_t)*8);
 	mpz_import(m, n, -1, sizeof(mp_limb_t), -1, 0, ls);
-//	for(size_t i = 0; i < n; i++){
-//		m->_mp_d[i] = ls[i];
-//	}
-//	m->_mp_size = n;
 }
 
 
@@ -324,6 +317,7 @@ void finish_ecc_operation(ecc_curve_info_t curve){
 
 ec_point_t element_to_ec_point(element_ptr a, unsigned int curve_size){
 	ec_point_t point_a;
+	memset(&point_a, 0, sizeof(ec_point_t));
 
 	element_ptr ptr_a_x = element_x(a);
 	element_ptr ptr_a_y = element_y(a);
@@ -360,9 +354,6 @@ void ec_point_to_element(element_ptr c, ec_point_t point_c){
 	element_ptr ptr_c_x = element_x(c);
 	element_ptr ptr_c_y = element_y(c);
 
-	/* TODO: Qualcosa di sbagliato qui!!! Quando copio gli mpz la memoria dell'mpz non è trovata
-	 * da nessuna parte negli element_ptr
-	 */
 	mpz_t mpz_c_x;
 	mpz_init(mpz_c_x);
 	limbs_array_to_mpz(mpz_c_x, point_c.x, 12);
@@ -390,7 +381,6 @@ void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
 	point_a = element_to_ec_point(a, curve.size);
 	point_b = element_to_ec_point(b, curve.size);
 
-
 	/* how to be notified when it has finished? -> You have to pass it a contiki process instead of NULL
 	 * (TODO: How can i block the caller of THIS function)
 	 */
@@ -404,6 +394,45 @@ void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
 	while( (ret = ecc_add_get_result(&point_c, result_vec)) == PKA_STATUS_OPERATION_INPRG ); /* WARNING: very ugly way to wait! */
 
 	if(ret == PKA_STATUS_FAILURE){
+		printf("ERROR: getting result of ecc_add operation (err. %ld)\n", REG(PKA_SHIFT));
+		exit(1);
+	}
+
+	/* put point_c in c */
+	ec_point_to_element(c, point_c);
+	((point_ptr) c->data)->inf_flag = 0;
+
+	/* finish operation */
+	//finish_ecc_operation(curve);
+}
+
+void curve_mul_pka(element_ptr c, element_ptr a, mpz_t k){
+	/* initialize operation */
+	ecc_curve_info_t curve = init_ecc_operation(a->field, 1);
+
+	print_ecc_curve_info(curve, "curve");
+
+	uint32_t result_vec;
+
+	ec_point_t point_a, point_c;
+	memset(&point_c, 0, sizeof(ec_point_t));
+
+	point_a = element_to_ec_point(a, curve.size);
+	uint32_t* k_ls = mpz_to_fixed_size_limbs_array(k, curve.size);
+
+	/* how to be notified when it has finished? -> You have to pass it a contiki process instead of NULL
+	 * (TODO: How can i block the caller of THIS function)
+	 */
+	if( ecc_mul_start(k_ls, &point_a, &curve, &result_vec, NULL) != PKA_STATUS_SUCCESS){
+		printf("ERROR: starting ecc_mul operation\n");
+		exit(1);
+	}
+
+	/* TODO: make wait less ugly */
+	uint8_t ret;
+	while( (ret = ecc_mul_get_result(&point_c, result_vec)) == PKA_STATUS_OPERATION_INPRG ); /* WARNING: very ugly way to wait! */
+
+	if(ret == PKA_STATUS_FAILURE){
 		printf("ERROR: getting result of ecc_mul operation (err. %ld)\n", REG(PKA_SHIFT));
 		exit(1);
 	}
@@ -413,7 +442,7 @@ void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
 	((point_ptr) c->data)->inf_flag = 0;
 
 	/* finish operation */
-	finish_ecc_operation(curve);
+	//finish_ecc_operation(curve);
 }
 #endif
 
@@ -435,7 +464,35 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
         r->inf_flag = 1;
         return;
       } else {
-        double_no_check(r, p, cdp->a); // TODO: How to accelerate?
+#if defined(CONTIKI_TARGET_ZOUL)
+    	element_t c_tmp, c_tmp1;
+	 	print_all_items(a, "a");
+
+	 	print_all_items(b, "b");
+
+	 	element_init_same_as(c_tmp, c);
+	 	mpz_t k;
+	 	mpz_init(k);
+	 	mpz_set_ui(k, 2);
+	    curve_mul_pka(c_tmp, a, k);
+
+	    element_init_same_as(c_tmp1, c);
+	    /* TODO: Chiamando due volte di seguito si rompono i dati della curva (coefficiente a) */
+	    curve_add_pka(c_tmp1, a, b);
+#endif
+        double_no_check(r, p, cdp->a);
+
+        print_all_items(c, "c_software");
+
+        print_all_items(c_tmp, "c_hardware (mul)");
+        print_all_items(c_tmp1, "c_hardware (add)");
+
+        if(element_cmp(c_tmp, c)){
+        	printf("ERROR: Driver gives different result!\n");
+        }
+
+        element_clear(c_tmp);
+        element_clear(c_tmp1);
         return;
       }
     }

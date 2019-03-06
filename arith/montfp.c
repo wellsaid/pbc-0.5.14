@@ -22,12 +22,6 @@
 #include "pbc_fp.h"
 #include "pbc_memory.h"
 
-// Per-element data.
-typedef struct {
-  char flag;     // flag == 0 means the element is zero.
-  mp_limb_t *d;  // Otherwise d points to an array holding the element.
-} *eptr;
-
 // Copies limbs of z into dst and zeroes any leading limbs, where n is the
 // total number of limbs.
 // Requires z to have at most n limbs.
@@ -40,20 +34,20 @@ static inline void set_limbs(mp_limb_t *dst, mpz_t z, size_t n) {
 
 static void fp_init(element_ptr e) {
   fptr p = e->field->data;
-  eptr ep = e->data = pbc_malloc(sizeof(*ep));
+  eptr_fp ep = e->data = pbc_malloc(sizeof(*ep));
   ep->flag = 0;
   ep->d = pbc_malloc(p->bytes);
 }
 
 static void fp_clear(element_ptr e) {
-  eptr ep = e->data;
+  eptr_fp ep = e->data;
   pbc_free(ep->d);
   pbc_free(e->data);
 }
 
 static void fp_set_mpz(element_ptr e, mpz_ptr z) {
   fptr p = e->field->data;
-  eptr ep = e->data;
+  eptr_fp ep = e->data;
   if (!mpz_sgn(z)) ep->flag = 0;
   else {
     mpz_t tmp;
@@ -71,7 +65,7 @@ static void fp_set_mpz(element_ptr e, mpz_ptr z) {
 
 static void fp_set_si(element_ptr e, signed long int op) {
   fptr p = e->field->data;
-  eptr ep = e->data;
+  eptr_fp ep = e->data;
   if (!op) ep->flag = 0;
   else {
     mpz_t tmp;
@@ -110,7 +104,7 @@ static void mont_reduce(mp_limb_t *x, mp_limb_t *y, fptr p) {
 }
 
 static void fp_to_mpz(mpz_ptr z, element_ptr e) {
-  eptr ep = e->data;
+  eptr_fp ep = e->data;
   if (!ep->flag) mpz_set_ui(z, 0);
   else {
     // x is stored as xR.
@@ -128,19 +122,19 @@ static void fp_to_mpz(mpz_ptr z, element_ptr e) {
 }
 
 static void fp_set0(element_ptr e) {
-  eptr ep = e->data;
+  eptr_fp ep = e->data;
   ep->flag = 0;
 }
 
 static void fp_set1(element_ptr e) {
   fptr p = e->field->data;
-  eptr ep = e->data;
+  eptr_fp ep = e->data;
   ep->flag = 2;
   memcpy(ep->d, p->R, p->bytes);
 }
 
 static int fp_is1(element_ptr e) {
-  eptr ep = e->data;
+  eptr_fp ep = e->data;
   if (!ep->flag) return 0;
   else {
     fptr p = e->field->data;
@@ -149,7 +143,7 @@ static int fp_is1(element_ptr e) {
 }
 
 static int fp_is0(element_ptr e) {
-  eptr ep = e->data;
+  eptr_fp ep = e->data;
   return !ep->flag;
 }
 
@@ -184,8 +178,8 @@ static int fp_set_str(element_ptr e, const char *s, int base) {
 }
 
 static void fp_set(element_ptr c, element_ptr a) {
-  eptr ad = a->data;
-  eptr cd = c->data;
+  eptr_fp ad = a->data;
+  eptr_fp cd = c->data;
   if (a == c) return;
   if (!ad->flag) cd->flag = 0;
   else {
@@ -207,14 +201,14 @@ static void fp_set(element_ptr c, element_ptr a) {
 }
 
 static void fp_add(element_ptr c, element_ptr a, element_ptr b) {
-  eptr ad = a->data, bd = b->data;
+  eptr_fp ad = a->data, bd = b->data;
 
   if (!ad->flag) {
     fp_set(c, b);
   } else if (!bd->flag) {
     fp_set(c, a);
   } else {
-    eptr cd = c->data;
+    eptr_fp cd = c->data;
     fptr p = a->field->data;
     const size_t t = p->limbs;
     mp_limb_t carry;
@@ -240,7 +234,7 @@ static void fp_add(element_ptr c, element_ptr a, element_ptr b) {
 }
 
 static void fp_double(element_ptr c, element_ptr a) {
-  eptr ad = a->data, cd = c->data;
+  eptr_fp ad = a->data, cd = c->data;
   if (!ad->flag) {
     cd->flag = 0;
   } else {
@@ -265,7 +259,7 @@ static void fp_double(element_ptr c, element_ptr a) {
 }
 
 static void fp_halve(element_ptr c, element_ptr a) {
-  eptr ad = a->data, cd = c->data;
+  eptr_fp ad = a->data, cd = c->data;
   if (!ad->flag) {
     cd->flag = 0;
   } else {
@@ -284,7 +278,7 @@ static void fp_halve(element_ptr c, element_ptr a) {
 }
 
 static void fp_neg(element_ptr c, element_ptr a) {
-  eptr ad = a->data, cd = c->data;
+  eptr_fp ad = a->data, cd = c->data;
   if (!ad->flag) cd->flag = 0;
   else {
     fptr p = a->field->data;
@@ -294,7 +288,7 @@ static void fp_neg(element_ptr c, element_ptr a) {
 }
 
 static void fp_sub(element_ptr c, element_ptr a, element_ptr b) {
-  eptr ad = a->data, bd = b->data;
+  eptr_fp ad = a->data, bd = b->data;
 
   if (!ad->flag) {
     fp_neg(c, b);
@@ -303,7 +297,7 @@ static void fp_sub(element_ptr c, element_ptr a, element_ptr b) {
   } else {
     fptr p = c->field->data;
     size_t t = p->limbs;
-    eptr cd = c->data;
+    eptr_fp cd = c->data;
     int i = mpn_cmp(ad->d, bd->d, t);
 
     if (i == 0) {
@@ -352,8 +346,8 @@ static inline void mont_mul(mp_limb_t *c, mp_limb_t *a, mp_limb_t *b,
 }
 
 static void fp_mul(element_ptr c, element_ptr a, element_ptr b) {
-  eptr ad = a->data, bd = b->data;
-  eptr cd = c->data;
+  eptr_fp ad = a->data, bd = b->data;
+  eptr_fp cd = c->data;
 
   if (!ad->flag || !bd->flag) {
     cd->flag = 0;
@@ -367,8 +361,8 @@ static void fp_mul(element_ptr c, element_ptr a, element_ptr b) {
 static void fp_pow_mpz(element_ptr c, element_ptr a, mpz_ptr op) {
   // Alternative: rewrite GMP mpz_powm().
   fptr p = a->field->data;
-  eptr ad = a->data;
-  eptr cd = c->data;
+  eptr_fp ad = a->data;
+  eptr_fp cd = c->data;
   if (!ad->flag) cd->flag = 0;
   else {
     mpz_t z;
@@ -387,8 +381,8 @@ static void fp_pow_mpz(element_ptr c, element_ptr a, mpz_ptr op) {
 // multiplication.
 // Requires nonzero a.
 static void fp_invert(element_ptr c, element_ptr a) {
-  eptr ad = a->data;
-  eptr cd = c->data;
+  eptr_fp ad = a->data;
+  eptr_fp cd = c->data;
   fptr p = a->field->data;
   mp_limb_t tmp[p->limbs];
   mpz_t z;
@@ -409,7 +403,7 @@ static void fp_invert(element_ptr c, element_ptr a) {
 
 static void fp_random(element_ptr a) {
   fptr p = a->field->data;
-  eptr ad = a->data;
+  eptr_fp ad = a->data;
   mpz_t z;
   mpz_init(z);
   pbc_mpz_random(z, a->field->order);
@@ -434,7 +428,7 @@ static void fp_from_hash(element_ptr a, void *data, int len) {
 }
 
 static int fp_cmp(element_ptr a, element_ptr b) {
-  eptr ad = a->data, bd = b->data;
+  eptr_fp ad = a->data, bd = b->data;
   if (!ad->flag) return bd->flag;
   else {
     fptr p = a->field->data;
@@ -444,7 +438,7 @@ static int fp_cmp(element_ptr a, element_ptr b) {
 }
 
 static int fp_sgn_odd(element_ptr a) {
-  eptr ad = a->data;
+  eptr_fp ad = a->data;
   if (!ad->flag) return 0;
   else {
     mpz_t z;
@@ -458,7 +452,7 @@ static int fp_sgn_odd(element_ptr a) {
 }
 
 static int fp_is_sqr(element_ptr a) {
-  eptr ad = a->data;
+  eptr_fp ad = a->data;
   int res;
   mpz_t z;
   mpz_init(z);
@@ -483,7 +477,7 @@ static int fp_to_bytes(unsigned char *data, element_t a) {
 
 static int fp_from_bytes(element_t a, unsigned char *data) {
   fptr p = a->field->data;
-  eptr ad = a->data;
+  eptr_fp ad = a->data;
   int n;
   mpz_t z;
 
