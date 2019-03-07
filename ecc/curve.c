@@ -127,14 +127,14 @@ static void curve_double(element_ptr c, element_ptr a) {
     r->inf_flag = 1;
     return;
   }
-#if defined(CONTIKI_TARGET_ZOUL)
+#if defined(CONTIKI_TARGET_ZOUL) && defined(ZOUL_USE_PKA)
   curve_mul_uint32_pka(c, a, 2);
 #else
   double_no_check(r, p, cdp->a);
 #endif
 }
 
-#if defined(CONTIKI_TARGET_ZOUL)
+#if defined(CONTIKI_TARGET_ZOUL) && defined(ZOUL_USE_PKA)
 static void curve_mul_mpz(element_ptr c, element_ptr a, mpz_ptr k) {
 	curve_point_ptr p = a->data;
 
@@ -160,7 +160,7 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
     return;
   }
 
-#if defined(CONTIKI_TARGET_ZOUL)
+#if defined(CONTIKI_TARGET_ZOUL) && defined(ZOUL_USE_PKA)
   /* it handles the case a == b automatically */
   curve_add_pka(c, a, b);
 #else
@@ -211,7 +211,7 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
 
 //compute c_i=a_i+a_i at one time.
 static void multi_double(element_ptr c[], element_ptr a[], int n) {
-#if defined(CONTIKI_TARGET_ZOUL)
+#if defined(CONTIKI_TARGET_ZOUL) && defined(ZOUL_USE_PKA)
 	for(n--; n >= 0; n--){
 		curve_double(c[n], a[n]);
 	}
@@ -291,7 +291,7 @@ static void multi_double(element_ptr c[], element_ptr a[], int n) {
 
 //compute c_i=a_i+b_i at one time.
 static void multi_add(element_ptr c[], element_ptr a[], element_ptr b[], int n){
-#if defined(CONTIKI_TARGET_ZOUL)
+#if defined(CONTIKI_TARGET_ZOUL) && defined(ZOUL_USE_PKA)
 	for(n--; n >= 0; n--){
 		curve_mul(c[n], a[n], b[n]);
 	}
@@ -727,7 +727,7 @@ void field_init_curve_ab(field_ptr f, element_ptr a, element_ptr b, mpz_t order,
   f->multi_add = multi_add;
 
   f->mul_mpz =
-#if defined(CONTIKI_TARGET_ZOUL)
+#if defined(CONTIKI_TARGET_ZOUL) && defined(ZOUL_USE_PKA)
 		  curve_mul_mpz;
 #else
   	  	  element_pow_mpz;
