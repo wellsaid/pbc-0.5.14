@@ -310,7 +310,7 @@ void curve_mul_uint32_pka(element_ptr c, element_ptr a, uint32_t k){
 	finish_ecc_operation();
 }
 
-void curve_mul_mpz_pka(element_ptr c, element_ptr a, mpz_t k){
+void curve_mul_mpz_pka(element_ptr c, element_ptr a, mpz_ptr k){
 	/* initialize operation */
 	STATIC_CURVE(curve, a->field);
 	init_ecc_operation(curve, a->field, 1);

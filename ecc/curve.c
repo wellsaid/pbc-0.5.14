@@ -134,6 +134,19 @@ static void curve_double(element_ptr c, element_ptr a) {
 #endif
 }
 
+#if defined(CONTIKI_TARGET_ZOUL)
+static void curve_mul_mpz(element_ptr c, element_ptr a, mpz_ptr k) {
+	curve_point_ptr p = a->data;
+
+	if (p->inf_flag) {
+		curve_set(c, a);
+		return;
+	}
+
+	curve_mul_mpz_pka(c, a, k);
+}
+#endif
+
 static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
   curve_data_ptr cdp = a->field->data;
   curve_point_ptr r = c->data, p = a->data, q = b->data;
@@ -711,7 +724,14 @@ void field_init_curve_ab(field_ptr f, element_ptr a, element_ptr b, mpz_t order,
   f->multi_doub = multi_double;
   f->add = f->mul = curve_mul;
   f->multi_add = multi_add;
-  f->mul_mpz = element_pow_mpz;
+
+  f->mul_mpz =
+#if defined(CONTIKI_TARGET_ZOUL)
+		  curve_mul_mpz;
+#else
+  	  	  element_pow_mpz;
+#endif
+
   f->cmp = curve_cmp;
   f->set0 = f->set1 = curve_set1;
   f->is0 = f->is1 = curve_is1;

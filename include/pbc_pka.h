@@ -36,6 +36,6 @@ void curve_mul_uint32_pka(element_ptr c, element_ptr a, uint32_t k);
  * \param k
  * \param a
  */
-void curve_mul_mpz_pka(element_ptr c, element_ptr a, mpz_t k);
+void curve_mul_mpz_pka(element_ptr c, element_ptr a, mpz_ptr k);
 
 #endif /* PBC_PKA_PBC_PKA_H_ */
