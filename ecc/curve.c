@@ -170,6 +170,7 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
         r->inf_flag = 1;
         return;
       } else {
+    	double_no_check(r, p, cdp->a);
         return;
       }
     }
