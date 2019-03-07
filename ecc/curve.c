@@ -127,7 +127,11 @@ static void curve_double(element_ptr c, element_ptr a) {
     r->inf_flag = 1;
     return;
   }
+#if defined(CONTIKI_TARGET_ZOUL)
+  curve_mul_uint32_pka(c, a, 2);
+#else
   double_no_check(r, p, cdp->a);
+#endif
 }
 
 static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
@@ -142,20 +146,17 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
     curve_set(c, a);
     return;
   }
+
+#if defined(CONTIKI_TARGET_ZOUL)
+  /* it handles the case a == b automatically */
+  curve_add_pka(c, a, b);
+#else
   if (!element_cmp(p->x, q->x)) {
     if (!element_cmp(p->y, q->y)) {
       if (element_is0(p->y)) {
         r->inf_flag = 1;
         return;
       } else {
-#if defined(CONTIKI_TARGET_ZOUL)
-	 	mpz_t k;
-	 	mpz_init(k);
-	 	mpz_set_ui(k, 2);
-	    curve_mul_pka(c, a, k);
-#else
-        double_no_check(r, p, cdp->a);
-#endif
         return;
       }
     }
@@ -163,9 +164,6 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
     r->inf_flag = 1;
     return;
   } else {
-#if defined(CONTIKI_TARGET_ZOUL)
-	 curve_add_pka(c, a, b);
-#else
     element_t lambda, e0, e1;
 
     element_init(lambda, cdp->field);
@@ -193,12 +191,17 @@ static void curve_mul(element_ptr c, element_ptr a, element_ptr b) {
     element_clear(lambda);
     element_clear(e0);
     element_clear(e1);
-#endif
   }
+#endif
 }
 
 //compute c_i=a_i+a_i at one time.
 static void multi_double(element_ptr c[], element_ptr a[], int n) {
+#if defined(CONTIKI_TARGET_ZOUL)
+	for(n--; n >= 0; n--){
+		curve_double(c[n], a[n]);
+	}
+#else
   int i;
   element_t* table = pbc_malloc(sizeof(element_t)*n);  //a big problem?
   element_t e0, e1, e2;
@@ -269,10 +272,16 @@ static void multi_double(element_ptr c[], element_ptr a[], int n) {
     element_clear(table[i]);
   }
   pbc_free(table);
+#endif
 }
 
 //compute c_i=a_i+b_i at one time.
 static void multi_add(element_ptr c[], element_ptr a[], element_ptr b[], int n){
+#if defined(CONTIKI_TARGET_ZOUL)
+	for(n--; n >= 0; n--){
+		curve_mul(c[n], a[n], b[n]);
+	}
+#else
   int i;
   element_t* table = pbc_malloc(sizeof(element_t)*n);  //a big problem?
   curve_point_ptr p, q, r;
@@ -353,6 +362,7 @@ static void multi_add(element_ptr c[], element_ptr a[], element_ptr b[], int n){
     element_clear(table[i]);
   }
   pbc_free(table);
+#endif
 }
 
 

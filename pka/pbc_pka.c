@@ -270,7 +270,47 @@ void curve_add_pka(element_ptr c, element_ptr a, element_ptr b){
 	finish_ecc_operation();
 }
 
-void curve_mul_pka(element_ptr c, element_ptr a, mpz_t k){
+void curve_mul_uint32_pka(element_ptr c, element_ptr a, uint32_t k){
+	/* initialize operation */
+	STATIC_CURVE(curve, a->field);
+	init_ecc_operation(curve, a->field, 1);
+
+	uint32_t result_vec;
+
+	ec_point_t point_a, point_c;
+	memset(&point_c, 0, sizeof(ec_point_t));
+
+	point_a = element_to_ec_point(a, curve.size);
+	uint32_t k_ls[curve.size];
+	memset(&k_ls[0], 0, curve.size*sizeof(uint32_t));
+	k_ls[0] = k;
+
+	/* how to be notified when it has finished? -> You have to pass it a contiki process instead of NULL
+	 * (TODO: How can i block the caller of THIS function)
+	 */
+	if( ecc_mul_start(k_ls, &point_a, &curve, &result_vec, NULL) != PKA_STATUS_SUCCESS){
+		printf("ERROR: starting ecc_mul operation\n");
+		exit(1);
+	}
+
+	/* TODO: make wait less ugly */
+	uint8_t ret;
+	while( (ret = ecc_mul_get_result(&point_c, result_vec)) == PKA_STATUS_OPERATION_INPRG ); /* WARNING: very ugly way to wait! */
+
+	if(ret == PKA_STATUS_FAILURE){
+		printf("ERROR: getting result of ecc_mul operation (err. %ld)\n", REG(PKA_SHIFT));
+		exit(1);
+	}
+
+	/* put point_c in c */
+	ec_point_to_element(c, point_c);
+	((curve_point_ptr) c->data)->inf_flag = 0;
+
+	/* finish operation */
+	finish_ecc_operation();
+}
+
+void curve_mul_mpz_pka(element_ptr c, element_ptr a, mpz_t k){
 	/* initialize operation */
 	STATIC_CURVE(curve, a->field);
 	init_ecc_operation(curve, a->field, 1);
