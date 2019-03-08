@@ -726,7 +726,7 @@ void field_init_curve_ab(field_ptr f, element_ptr a, element_ptr b, mpz_t order,
   f->add = f->mul = curve_mul;
   f->multi_add = multi_add;
 
-  f->mul_mpz =
+  f->pow_mpz = f->mul_mpz =
 #if defined(CONTIKI_TARGET_ZOUL) && defined(ZOUL_USE_PKA)
 		  curve_mul_mpz;
 #else
