@@ -1,4 +1,4 @@
-#ifdef CONTIKI_TARGET_ZOUL
+#if defined(CONTIKI_TARGET_ZOUL) && defined(ZOUL_USE_PKA)
 
 #include <stdlib.h>
 
