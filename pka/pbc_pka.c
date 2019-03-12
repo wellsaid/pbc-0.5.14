@@ -196,8 +196,8 @@ static void init_ecc_operation(volatile ecc_curve_info_t curve, field_ptr f, con
 		mpz_clear(mpz_b_coeff);
 	}
 
-	/* start pka engine */
-	pka_enable();
+	/* start+reset pka engine */
+	pka_init();
 }
 
 /**
