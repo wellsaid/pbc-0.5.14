@@ -5,7 +5,7 @@
 #include <time.h>
 
 #include <os/lib/random.h>
-#include <os/lib/heapmem.h>
+//#include <os/lib/heapmem.h>
 
 #include "pbc_utils.h"
 #include "pbc_random.h"

@@ -18,7 +18,7 @@
 #include "pbc_memory.h"
 #include "misc/darray.h"
 
-#include <os/lib/heapmem.h>
+//#include <os/lib/heapmem.h>
 
 // Per-element data.
 struct multiz_s {
@@ -396,7 +396,7 @@ static int f_item_count(element_ptr e) {
 static element_ptr f_item(element_ptr e, int i) {
   multiz z = e->data;
   if (T_MPZ == z->type) return NULL;
-  element_ptr r = heapmem_alloc(sizeof(*r));
+  element_ptr r = malloc(sizeof(*r));
   r->field = e->field;
   r->data = darray_at(z->a, i);
   return r;

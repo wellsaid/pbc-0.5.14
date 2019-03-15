@@ -26,7 +26,7 @@
 //		p_str = heapmem_alloc(p_str_size);
 //		gmp_snprintf(p_str, p_str_size, "%Zd", mpz_x_i);
 //		printf(p_str); fflush(stdout);
-//		heapmem_free(p_str);
+//		free(p_str);
 //
 //		if(i < item_count - 1){
 //			printf(", "); fflush(stdout);

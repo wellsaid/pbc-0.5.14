@@ -19,7 +19,7 @@
 #include "lex.yy.h"
 #include "parser.tab.h"
 
-#include <os/lib/heapmem.h>
+//#include <os/lib/heapmem.h>
 
 int option_easy = 0;
 const char *option_prompt;
@@ -868,14 +868,14 @@ int yywrap_readline(void) {
   static char *currentline;
   static YY_BUFFER_STATE st;
   yy_delete_buffer(st);
-  heapmem_free(currentline);
+  free(currentline);
   currentline = pbc_getline(option_prompt);
   if (!currentline) {
     end_of_input = 1;
     return 1;
   }
   int n = strlen(currentline);
-  currentline = heapmem_realloc(currentline, n + 2);
+  currentline = realloc(currentline, n + 2);
   currentline[n] = '\n';
   currentline[n + 1] = '\0';
   st = yy_scan_string(currentline);

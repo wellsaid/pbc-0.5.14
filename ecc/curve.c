@@ -17,7 +17,7 @@
 #include "pbc_a_param.h"
 #include "pbc_pairing.h"
 #include "misc/darray.h"
-#include <os/lib/heapmem.h>
+//#include <os/lib/heapmem.h>
 
 static void curve_init(element_ptr e) {
   curve_data_ptr cdp = e->field->data;

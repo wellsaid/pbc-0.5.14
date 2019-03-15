@@ -1215,7 +1215,7 @@ int main(int argc, char **argv) {
     if (option_echo) puts(currentline);
     lexcp = currentline;
     parseline();
-    heapmem_free(currentline);
+    free(currentline);
   }
   return 0;
 }
